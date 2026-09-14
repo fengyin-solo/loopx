@@ -12,6 +12,27 @@ Pi 保留为 managed runtime 候选。前者利用已存在的被动 observer �
 必须证明生命周期、provider、崩溃恢复和真实结果，插件事件 fixture 不能替代这些证据。
 本评估不提供缺乏测量依据的评分或性能排名。
 
+## 已交付的托管执行面（2026-09-15）
+
+选型受仓库今天实际交付的能力约束，而不只取决于上游 harness 能做什么。托管的单次执行
+单元是有界 Turn：
+
+- `loopx turn run-once` 接受 `--host codex-cli|dsh|generic-cli` 与
+  `--execution-mode isolated-headless`：LoopX 决定，宿主适配器调用 agent CLI，独立
+  validator 证明后置条件，只有通过的结果才会被提交；
+- `loopx host-mode-plan` 只有在宿主声明 `typed_host_adapter` 时，才为
+  `continue_without_ui` 意图选择 `isolated_headless_turn`；缺少该声明时报该模式未就绪，
+  并指出缺失的能力；
+- 会话归属（`managed_runtime` 与 `attached_host`）不在本文决定，属于
+  [Agent 会话执行模式](./agent-session-execution-modes-v0.zh-CN.md)，该文档同时拥有
+  M1-M4 接入里程碑与跨前端投影行。
+
+| 角色 | 来源 | 当前选型 | 晋级门槛 |
+| --- | --- | --- | --- |
+| 默认托管执行宿主 | LoopX Turn 加 `codex-cli` 适配器 | 托管有界 Turn 的已交付默认值 | 保持类型化 host request/result 与独立验证；没有同等或更强的契约不替换 |
+| 可选的 Turn 宿主与 L1 首个事件源 | DSH | opt-in，未晋级 | 本文 C0、C1、开销、保留与 Mode B 各行被真实执行并通过评审 |
+| 可选的可见宿主循环 | Pi | 不是 managed runtime | 先声明按绑定持久化且可回读的会话模式，证明重启下的单执行器行为、"对话不是回执"、宿主本地状态非权威，并提供一条真实宿主重启行 |
+
 ## 证据基线
 
 LoopX 检查基线为 `bf217e1e01bec79f357c9ecbd580cf2dfa73db8b`：

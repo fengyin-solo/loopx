@@ -13,6 +13,30 @@ The first choice minimizes the cost of qualifying an existing passive observer;
 the second requires lifecycle, provider, crash-recovery and outcome evidence
 that a plugin event fixture cannot supply. No quantitative winner is claimed.
 
+## Shipped Managed Execution Surface (2026-09-15)
+
+Selection is constrained by what the repository ships today, not only by what an
+upstream harness can do. The managed bounded execution unit is the governed Turn:
+
+- `loopx turn run-once` accepts `--host codex-cli|dsh|generic-cli` with
+  `--execution-mode isolated-headless`: LoopX decides, a host adapter invokes the
+  agent CLI, an independent validator proves the postcondition, and only a passing
+  result is committed;
+- `loopx host-mode-plan` selects `isolated_headless_turn` for the
+  `continue_without_ui` intent only when the host declares `typed_host_adapter`;
+  without that declaration it reports the mode as not ready and names the missing
+  capability;
+- session ownership (`managed_runtime` versus `attached_host`) is not decided
+  here. It belongs to
+  [Agent Session Execution Modes](./agent-session-execution-modes-v0.md), which
+  also owns the M1-M4 integration milestones and the cross-frontend projection row.
+
+| Role | Source | Selection today | Promotion gate |
+| --- | --- | --- | --- |
+| Default managed execution host | LoopX Turn plus the `codex-cli` adapter | shipped default for bounded managed Turns | keep the typed host request/result and independent validation; do not replace it without an equal or stronger contract |
+| Opt-in Turn host and first L1 event source | DSH | opt-in, not promoted | the C0, C1, overhead, retention and Mode B rows in this document being run and reviewed |
+| Optional visible host loop | Pi | not a managed runtime | declare a per-binding session mode with readback, prove single-executor behavior under restart, "conversation is not a receipt", non-authoritative host-local state, and one real-host restart row |
+
 ## Evidence Baseline
 
 LoopX was inspected at `bf217e1e01bec79f357c9ecbd580cf2dfa73db8b`.
