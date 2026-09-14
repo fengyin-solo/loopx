@@ -33,9 +33,44 @@ upstream harness can do. The managed bounded execution unit is the governed Turn
 
 | Role | Source | Selection today | Promotion gate |
 | --- | --- | --- | --- |
-| Default managed execution host | LoopX Turn plus the `codex-cli` adapter | shipped default for bounded managed Turns | keep the typed host request/result and independent validation; do not replace it without an equal or stronger contract |
+| Default managed execution host | LoopX Turn plus the `dsh` host adapter, bound to an operator-supplied model endpoint | shipped default for bounded managed Turns | keep the typed host request/result, independent validation, and the operator-owned credential boundary; do not replace it without an equal or stronger contract |
+| Supported alternative Turn host | LoopX Turn plus the `codex-cli` adapter | supported, and must also be bound to an operator-supplied provider | no managed lane may depend on an individual's personal CLI subscription |
 | Opt-in Turn host and first L1 event source | DSH | opt-in, not promoted | the C0, C1, overhead, retention and Mode B rows in this document being run and reviewed |
 | Optional visible host loop | Pi | not a managed runtime | declare a per-binding session mode with readback, prove single-executor behavior under restart, "conversation is not a receipt", non-authoritative host-local state, and one real-host restart row |
+
+### Managed host binding and live qualification (2026-09-15)
+
+A managed host binding names four things: the host adapter, the provider, the
+model, and where the credential comes from. The default binding is the DSH Turn
+host with provider `deepseek-official`, model `deepseek-flash`
+(DeepSeek V4.1 Flash), an endpoint from the operator environment
+(`DEEPSEEK_BASE_URL`) and a credential from the operator environment
+(`DEEPSEEK_API_KEY`). A managed lane therefore never depends on an individual
+developer's CLI subscription being available, funded, or logged in.
+
+Verified for this binding:
+
+- both Turn host paths pass with the real SDK and runtime
+  (`deepseek-harness-sdk==0.1.2a3`): the in-process `--host dsh` path and the
+  `generic-cli` subprocess path;
+- one live governed Turn reached `validated_progress`: the host executed the
+  bounded action, an independent validator proved the postcondition, and only
+  then did writeback and quota spend follow;
+- a live Turn whose postcondition was not proved fail-closed instead: no
+  writeback, and the quota slot spend count stayed at zero.
+
+Open gaps before this binding is a promoted production default:
+
+- the runtime snapshot bundled as `deepseek-harness-runtime-bin==0.1.2a3`
+  cannot boot the stock `headless` profile as shipped: a profile row imports
+  `@deepseek-ai/dsh-session-title-llm`, which the vendored package set omits,
+  and installing that package into a profile directory does not change
+  resolution inside the snapshot. The current local workaround is a binding
+  overlay that disables the affected row;
+- the LoopX DSH Turn composition must name the tool rows a managed action needs
+  (`@deepseek-ai/dsh-tool-fs`, `@deepseek-ai/dsh-tool-bash`). Without them a live
+  model can answer but cannot act, and the Turn ends in a validation failure
+  rather than in work.
 
 ## Evidence Baseline
 
