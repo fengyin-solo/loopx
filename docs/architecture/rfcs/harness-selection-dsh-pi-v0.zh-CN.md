@@ -177,3 +177,29 @@ goal ledger 不得被标成当前 session 健康。输出只供操作者，不�
 提交仓库。删除功能等 retention profile 决定后再做。若 Pi 在相同隔离及生命周期
 验收下具有更低的实测接入／运维成本，或 DSH 无法通过，再调整偏好。
 不得为了让 L1 实验通过而加入 L2 建议、重试权限或新 scheduler。
+
+## 管家通道的会话传输（2026-09-15）
+
+受治理的 Turn 面与管家（manager）会话通道都从同一份 operator 凭据解析默认宿主，
+但两者需要的宿主形态不同：Turn 是一次有界工作片段，现有 DSH adapter 已支持；
+管家通道还需要一个能持有交互会话的传输，而现有 DSH 面明确不承诺跨 turn 的 DSH
+会话连续性。
+
+已实现的行为：配置了 operator 凭据时，管家通道把默认模型绑到 operator provider
+（`deepseek-flash`，来源 `operator_credential_default`），执行器也从同一凭据解析；
+当解析出的托管宿主没有 chat 传输时，解析结果给出 typed
+`dsh_chat_transport_unsupported`，而针对该宿主的会话请求以 typed
+`managed_host_chat_transport_unsupported` host-tool gate 失败，不会静默回落到个人
+CLI 登录。
+
+| 路线 | 形态 | 代价与风险 |
+| --- | --- | --- |
+| A. turn-backed 管家传输（优先） | 每个管家 chat turn 在托管宿主上执行一次受治理 Turn（`loopx turn run-once --host dsh`，`isolated-headless`），把有界会话历史作为上下文 | 无双工流式、无跨 turn 宿主会话，每个 turn 都是新 segment；上线前需要明确的工具／沙箱权威与单 turn 成本上限 |
+| B. ACP 或 stdio 适配 | 当托管宿主暴露此类接口时，复用 ACP stdio 适配路径（Kiro CLI chat 端点已走此路） | 传输成本最低，但依赖上游接口，目前没有已交付证据 |
+| C. codex 端点绑定 operator provider | 让 Codex app-server 直接以 operator provider 启动，保留现有传输与工具面 | 保留流式，但必须证明会话不再以个人登录认证；provider 配置成为宿主状态权威，需要单独 gate |
+
+选型规则：优先 A，因为它复用 LoopX 已经验证过的 Turn 权威、typed host failure、
+journal 与配额语义；B 作为上游接口出现时的低成本替代；只有在管家体验确需双工
+流式时才评估 C。无论采用哪条路线，都必须证明「一次管家会话的模型工作落在
+operator 凭据上，且不存在任何默认指向个人订阅的路径」。本文件不授权为此新增
+scheduler、重试权限或第二套监控子系统。

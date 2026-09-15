@@ -212,3 +212,35 @@ Implement deletion only after the owner selects the retention profile. Revisit
 runtime preference if Pi satisfies the same isolation/lifecycle tests at lower
 measured integration and operational cost, or DSH fails them. Do not introduce
 L2 advice, retry control or a new scheduler to make an L1 experiment pass.
+
+## Steward Channel Chat Transport (2026-09-15)
+
+The governed Turn surface and the steward (manager) chat channel resolve their
+default host from the same operator credential, but they need different host
+shapes. A Turn is one bounded work segment, which the shipped DSH adapter
+serves today. The steward channel additionally needs a transport that can hold
+an interactive session, and the shipped DSH surface explicitly does not promise
+cross-turn DSH session continuity.
+
+Shipped behaviour: with an operator credential configured, the steward channel
+defaults its model to the operator provider (`deepseek-flash`, source
+`operator_credential_default`) and resolves its executor from the same
+credential. When the resolved managed host has no chat transport, resolution
+reports the typed `dsh_chat_transport_unsupported` reason and a session request
+for that host fails as the typed `managed_host_chat_transport_unsupported`
+host-tool gate instead of silently falling back to an individual CLI login.
+
+| Option | Shape | Cost and risk |
+| --- | --- | --- |
+| A. Turn-backed steward transport (preferred) | Each steward chat turn runs one governed Turn on the managed host (`loopx turn run-once --host dsh`, `isolated-headless`), with bounded chat history as context | No duplex streaming and no cross-turn host session; each turn is a fresh segment. Requires an explicit tool/sandbox authority and a per-turn cost bound before it ships |
+| B. ACP or stdio adapter | Reuse the ACP stdio adapter path (as the Kiro CLI chat endpoint does) when the managed host exposes such an interface | Lowest transport cost, but depends on an upstream interface that no shipped evidence covers yet |
+| C. Codex endpoint bound to the operator provider | Start the Codex app-server itself against the operator provider so the existing transport and tool surface stay | Keeps streaming, but must prove the session no longer authenticates with an individual login; the provider config becomes host-state authority and needs its own gate |
+
+Selection rule: prefer A, because it reuses the Turn authority, typed host
+failure, journal and quota semantics LoopX already validates; keep B as the
+cheaper replacement if the upstream interface appears; evaluate C only if
+duplex streaming is required for the steward experience. Whichever option ships
+must demonstrate, for one steward session, that the model work lands on the
+operator credential and that no default path reaches an individual
+subscription. This document authorizes no new scheduler, retry authority or
+second monitoring subsystem to make that demonstration pass.
