@@ -13,6 +13,12 @@ The first choice minimizes the cost of qualifying an existing passive observer;
 the second requires lifecycle, provider, crash-recovery and outcome evidence
 that a plugin event fixture cannot supply. No quantitative winner is claimed.
 
+Two DSH roles appear in this document and must not be conflated. The **bounded
+managed Turn host** (LoopX's adapter choice for one governed Turn) is
+credential-bound and shipped, as recorded below. The **L1 event source and
+session-owning runtime** role stays opt-in and is not promoted by that binding;
+it still needs the C0, C1, overhead, retention and Mode B rows.
+
 ## Shipped Managed Execution Surface (2026-09-15)
 
 Selection is constrained by what the repository ships today, not only by what an
@@ -35,7 +41,7 @@ upstream harness can do. The managed bounded execution unit is the governed Turn
 | --- | --- | --- | --- |
 | Default managed execution host | LoopX Turn plus the `dsh` host adapter, bound to an operator-supplied model endpoint | shipped default for bounded managed Turns once the operator configured a model credential, otherwise `codex-cli` | keep the typed host request/result, independent validation, and the operator-owned credential boundary; do not replace it without an equal or stronger contract |
 | Supported alternative Turn host | LoopX Turn plus the `codex-cli` adapter | supported, and must also be bound to an operator-supplied provider | no managed lane may depend on an individual's personal CLI subscription |
-| Opt-in Turn host and first L1 event source | DSH | opt-in, not promoted | the C0, C1, overhead, retention and Mode B rows in this document being run and reviewed |
+| L1 event source and session-owning runtime candidate | DSH | opt-in, not promoted; the bounded Turn host role is the default row above | the C0, C1, overhead, retention and Mode B rows in this document being run and reviewed |
 | Optional visible host loop | Pi | not a managed runtime | declare a per-binding session mode with readback, prove single-executor behavior under restart, "conversation is not a receipt", non-authoritative host-local state, and one real-host restart row |
 
 ### Managed host binding and live qualification (2026-09-15)
