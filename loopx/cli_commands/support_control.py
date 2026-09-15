@@ -65,6 +65,12 @@ from .support_control_backup import (
     handle_backup_state_command,
     register_backup_state_command,
 )
+from .support_control_restore import (
+    handle_restore_state_command,
+    handle_verify_state_command,
+    register_restore_state_command,
+    register_verify_state_command,
+)
 from .support_control_chat import register_chat_and_dashboard_commands
 from .support_control_chat_endpoint import (
     handle_chat_endpoint_command,
@@ -99,8 +105,10 @@ SUPPORT_CONTROL_COMMANDS = {
     "heartbeat-prompt",
     "promotion-gate",
     "promotion-readiness",
+    "restore-state",
     "upgrade-plan",
     "update",
+    "verify-state",
     "registry",
     "registry-boundary",
     "serve-status",
@@ -115,6 +123,8 @@ def register_support_control_commands(
     from .automation_prompts import register_automation_prompts
     register_automation_prompts(subparsers, add_subcommand_format)
     register_backup_state_command(subparsers, add_subcommand_format)
+    register_verify_state_command(subparsers, add_subcommand_format)
+    register_restore_state_command(subparsers, add_subcommand_format)
     register_heartbeat_control_commands(subparsers, add_subcommand_format)
 
     register_supervisor_control_commands(subparsers, add_subcommand_format)
@@ -350,6 +360,20 @@ def handle_support_control_command(
         return handle_backup_state_command(
             args,
             registry_path=registry_path,
+            print_payload=print_payload,
+            output_format=output_format,
+        )
+
+    if args.command == "verify-state":
+        return handle_verify_state_command(
+            args,
+            print_payload=print_payload,
+            output_format=output_format,
+        )
+
+    if args.command == "restore-state":
+        return handle_restore_state_command(
+            args,
             print_payload=print_payload,
             output_format=output_format,
         )

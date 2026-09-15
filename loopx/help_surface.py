@@ -359,6 +359,7 @@ MANPAGE_COMMAND_HELP_ONLY = frozenset(
         "reliability-diagnostics",
         "register-authority-source",
         "registry-boundary",
+        "restore-state",
         "reward",
         "reward-memory",
         "semantic-preference",
@@ -367,6 +368,7 @@ MANPAGE_COMMAND_HELP_ONLY = frozenset(
         "uninstall-project",
         "value-connectors",
         "version",
+        "verify-state",
         "worker-bridge",
     }
 )

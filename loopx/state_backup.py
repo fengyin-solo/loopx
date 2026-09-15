@@ -423,15 +423,104 @@ def build_state_backup_plan(
     }
 
 
-def _add_path_to_tar(tar: tarfile.TarFile, source: Path, archive_path: str, exclude_roots: list[Path]) -> None:
+class _HashingReader:
+    """Stream wrapper that hashes content while tarfile copies it."""
+
+    def __init__(self, handle: Any, hasher: Any) -> None:
+        self._handle = handle
+        self._hasher = hasher
+
+    def read(self, size: int = -1) -> bytes:
+        chunk = self._handle.read(size)
+        if chunk:
+            self._hasher.update(chunk)
+        return chunk
+
+
+def _file_index_record(
+    *,
+    name: str,
+    kind: str,
+    stat_result: os.stat_result,
+    target_key: str,
+    sha256: str | None = None,
+    linktarget: str | None = None,
+) -> dict[str, Any]:
+    return {
+        "name": name,
+        "kind": kind,
+        # Tar normalizes dir and symlink member sizes to 0; only regular
+        # files carry a meaningful content size.
+        "size": int(stat_result.st_size) if kind == "file" else 0,
+        "mode": int(stat_result.st_mode & 0o7777),
+        "sha256": sha256,
+        "linktarget": linktarget,
+        "target_key": target_key,
+        "category": _target_category(target_key),
+    }
+
+
+def _record_path_to_tar(
+    tar: tarfile.TarFile,
+    source: Path,
+    archive_path: str,
+    exclude_roots: list[Path],
+    *,
+    target_key: str,
+    records: list[dict[str, Any]],
+) -> None:
     if _should_skip(source, exclude_roots):
         return
-    if source.is_dir() and not source.is_symlink():
-        tar.add(source, arcname=archive_path, recursive=False)
-        for child in sorted(source.iterdir(), key=lambda item: item.name):
-            _add_path_to_tar(tar, child, f"{archive_path}/{child.name}", exclude_roots)
+    stat_result = source.lstat()
+    info = tar.gettarinfo(str(source), arcname=archive_path)
+    if source.is_symlink():
+        tar.addfile(info)
+        records.append(
+            _file_index_record(
+                name=archive_path,
+                kind="symlink",
+                stat_result=stat_result,
+                target_key=target_key,
+                linktarget=os.readlink(source),
+            )
+        )
         return
-    tar.add(source, arcname=archive_path, recursive=False)
+    if source.is_dir():
+        tar.addfile(info)
+        records.append(
+            _file_index_record(
+                name=archive_path,
+                kind="dir",
+                stat_result=stat_result,
+                target_key=target_key,
+            )
+        )
+        try:
+            children = sorted(source.iterdir(), key=lambda item: item.name)
+        except OSError:
+            children = []
+        for child in children:
+            _record_path_to_tar(
+                tar,
+                child,
+                f"{archive_path}/{child.name}",
+                exclude_roots,
+                target_key=target_key,
+                records=records,
+            )
+        return
+    hasher = hashlib.sha256()
+    with source.open("rb") as handle:
+        tar.addfile(info, _HashingReader(handle, hasher))
+    records.append(
+        _file_index_record(
+            name=archive_path,
+            kind="file",
+            stat_result=stat_result,
+            target_key=target_key,
+            sha256=hasher.hexdigest(),
+        )
+    )
 
 
 def _sha256_file(path: Path) -> str:
@@ -468,16 +557,26 @@ def execute_state_backup_plan(payload: dict[str, Any]) -> dict[str, Any]:
     }
     updated["recommended_action"] = "backup written; keep the archive local and private"
 
-    manifest_for_archive = dict(updated)
-    manifest_bytes = json.dumps(manifest_for_archive, ensure_ascii=False, indent=2).encode("utf-8")
+    records: list[dict[str, Any]] = []
     with tarfile.open(archive_path, "w:gz", dereference=False) as tar:
         for item in included:
             if not isinstance(item, dict):
                 continue
             source = Path(str(item.get("source_path") or "")).expanduser()
             archive_name = str(item.get("archive_path") or source.name)
+            target_key = str(item.get("key") or "")
             if source.exists() or source.is_symlink():
-                _add_path_to_tar(tar, source, archive_name, exclude_roots)
+                _record_path_to_tar(
+                    tar,
+                    source,
+                    archive_name,
+                    exclude_roots,
+                    target_key=target_key,
+                    records=records,
+                )
+        updated["file_index"] = records
+        manifest_for_archive = dict(updated)
+        manifest_bytes = json.dumps(manifest_for_archive, ensure_ascii=False, indent=2).encode("utf-8")
         info = tarfile.TarInfo("manifest.json")
         info.size = len(manifest_bytes)
         info.mtime = int(datetime.now(timezone.utc).timestamp())
