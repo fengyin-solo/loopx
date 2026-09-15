@@ -34,9 +34,10 @@ def register_quota_command(
             "scheduler-fail-current",
             "spend-slot",
             "void-slot",
+            "reconcile",
         ],
         default="status",
-        help="Use status for all groups, plan for next-turn groups, should-run for one goal, monitor-poll for no-spend quiet poll evidence, scheduler-ack for successful Codex App RRULE state, scheduler-fail-current to suppress a repeated failed host update pair, spend-slot for accounting, or void-slot for a non-destructive accounting correction.",
+        help="Use status for all groups, plan for next-turn groups, should-run for one goal, monitor-poll for no-spend quiet poll evidence, scheduler-ack for successful Codex App RRULE state, scheduler-fail-current to suppress a repeated failed host update pair, spend-slot for accounting, void-slot for a non-destructive accounting correction, or reconcile to cross-check spend/void events against settlement receipts (dry-run by default, --execute applies idempotent corrections).",
     )
     quota_parser.add_argument(
         "--goal-id",
@@ -226,6 +227,15 @@ def register_quota_command(
     )
     quota_parser.add_argument(
         "--reason-summary", help="Public-safe reason for `quota void-slot`."
+    )
+    quota_parser.add_argument(
+        "--timestamp-tolerance-seconds",
+        type=int,
+        default=60,
+        help=(
+            "Maximum absolute timestamp difference for `quota reconcile` to "
+            "classify an unmatched void as timestamp drift (default 60)."
+        ),
     )
     register_quota_monitor_poll_request_arguments(quota_parser)
     quota_parser.add_argument(

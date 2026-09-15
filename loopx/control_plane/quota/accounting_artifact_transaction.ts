@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
-import { access, lstat, readFile } from "node:fs/promises";
-import { basename, dirname, extname, join, resolve } from "node:path";
+import { access, lstat, readFile, realpath } from "node:fs/promises";
+import { basename, dirname, extname, isAbsolute, join, relative, resolve, sep } from "node:path";
 
 import type { JsonObject } from "../effect_program.ts";
 import { EffectRuntimeRequestError } from "../effect_runtime_errors.ts";
@@ -19,15 +19,35 @@ import {
   requireStringLiteral,
 } from "../runtime_decode.ts";
 
-export type QuotaAccountingArtifactKind = "spend" | "void";
+export type QuotaAccountingArtifactKind =
+  | "spend"
+  | "void"
+  | "reconcile_spend"
+  | "reconcile_void";
 
 interface QuotaAccountingArtifactContract {
-  receiptSchema: "quota_spend_commit_receipt_v0" | "quota_void_commit_receipt_v0";
-  transactionDirectory: "quota-spend" | "quota-void";
-  artifactSlug: "quota-slot-spent" | "quota-slot-voided";
+  receiptSchema:
+    | "quota_spend_commit_receipt_v0"
+    | "quota_void_commit_receipt_v0"
+    | "quota_reconcile_spend_receipt_v0"
+    | "quota_reconcile_void_receipt_v0";
+  transactionDirectory:
+    | "quota-spend"
+    | "quota-void"
+    | "quota-reconcile-spend"
+    | "quota-reconcile-void";
+  artifactSlug:
+    | "quota-slot-spent"
+    | "quota-slot-voided"
+    | "quota-reconcile-spent"
+    | "quota-reconcile-voided";
   classification: "quota_slot_spent" | "quota_slot_voided";
   metadataField: "quota_spend_commit" | "quota_void_commit";
-  label: "quota spend" | "quota void";
+  label:
+    | "quota spend"
+    | "quota void"
+    | "quota reconciliation spend"
+    | "quota reconciliation void";
 }
 
 const QUOTA_ACCOUNTING_ARTIFACT_CONTRACTS = {
@@ -47,12 +67,36 @@ const QUOTA_ACCOUNTING_ARTIFACT_CONTRACTS = {
     metadataField: "quota_void_commit",
     label: "quota void",
   },
+  // Reconciliation corrections append ordinary quota_slot_spent /
+  // quota_slot_voided ledger events (so the rolling-window aggregation needs
+  // no second path), but they ride distinct, audit-visible artifact and
+  // receipt contracts. Effect identities are deterministically derived and
+  // prefixed `quota-reconcile:`, so they can never collide with live spend or
+  // void commits.
+  reconcile_spend: {
+    receiptSchema: "quota_reconcile_spend_receipt_v0",
+    transactionDirectory: "quota-reconcile-spend",
+    artifactSlug: "quota-reconcile-spent",
+    classification: "quota_slot_spent",
+    metadataField: "quota_spend_commit",
+    label: "quota reconciliation spend",
+  },
+  reconcile_void: {
+    receiptSchema: "quota_reconcile_void_receipt_v0",
+    transactionDirectory: "quota-reconcile-void",
+    artifactSlug: "quota-reconcile-voided",
+    classification: "quota_slot_voided",
+    metadataField: "quota_void_commit",
+    label: "quota reconciliation void",
+  },
 } as const satisfies Record<QuotaAccountingArtifactKind, QuotaAccountingArtifactContract>;
 
 export interface QuotaAccountingArtifactReceipt extends JsonObject {
   schema_version:
     | "quota_spend_commit_receipt_v0"
-    | "quota_void_commit_receipt_v0";
+    | "quota_void_commit_receipt_v0"
+    | "quota_reconcile_spend_receipt_v0"
+    | "quota_reconcile_void_receipt_v0";
   effect_id: string;
   request_digest: string;
   status: "prepared" | "committed";
@@ -253,6 +297,66 @@ export function parseQuotaAccountingIndex(content: string | null): JsonObject[] 
     records.push(requiredObject(value, `quota run index line ${index + 1}`));
   }
   return records;
+}
+
+/**
+ * Resolve the quota event body for one run index row: the inline
+ * `quota_event` when present, otherwise the referenced JSON artifact. The
+ * artifact must stay inside the goal runs directory and must agree with the
+ * index row classification/goal; a missing artifact returns null.
+ */
+export async function readIndexedQuotaEvent(
+  runsDir: string,
+  record: JsonObject,
+  goalId: string,
+  expectedClassification: "quota_slot_spent" | "quota_slot_voided",
+): Promise<JsonObject | null> {
+  const inline = jsonObject(record.quota_event);
+  if (inline) return inline;
+  if (typeof record.json_path !== "string" || !record.json_path.trim()) {
+    return null;
+  }
+  let targetPath: string;
+  try {
+    targetPath = await realpath(resolve(record.json_path.trim()));
+  } catch (error) {
+    if (isNodeErrorCode(error, "ENOENT")) return null;
+    throw error;
+  }
+  const relativePath = relative(await realpath(runsDir), targetPath);
+  if (
+    !relativePath ||
+    relativePath === ".." ||
+    relativePath.startsWith(`..${sep}`) ||
+    isAbsolute(relativePath)
+  ) {
+    throw new EffectRuntimeRequestError(
+      "quota accounting json_path must stay inside the goal runs directory",
+    );
+  }
+  let content: string;
+  try {
+    content = await readFile(targetPath, "utf8");
+  } catch (error) {
+    if (isNodeErrorCode(error, "ENOENT")) return null;
+    throw error;
+  }
+  let value: unknown;
+  try {
+    value = JSON.parse(content);
+  } catch {
+    throw new EffectRuntimeRequestError("quota accounting JSON artifact is malformed");
+  }
+  const artifact = requiredObject(value, "quota accounting JSON artifact");
+  if (
+    artifact.classification !== expectedClassification ||
+    (artifact.goal_id !== undefined && artifact.goal_id !== goalId)
+  ) {
+    throw new EffectRuntimeRequestError(
+      "quota accounting JSON artifact identity does not match its index row",
+    );
+  }
+  return jsonObject(artifact.quota_event);
 }
 
 function pyValue(value: unknown): string {

@@ -55,11 +55,16 @@ from ..presentation.renderers.quota_markdown import (
     render_quota_scheduler_failure_markdown,
     render_quota_should_run_markdown,
 )
+from ..presentation.renderers.quota_reconcile_markdown import (
+    render_quota_reconcile_report_markdown,
+)
 from ..presentation.renderers.turn_envelope_markdown import (
     render_turn_envelope_markdown,
 )
 from ..quota import (
     build_quota_plan,
+    goal_quota_config,
+    reconcile_quota,
     record_quota_monitor_poll,
     spend_quota_slot,
     void_quota_slot,
@@ -147,6 +152,7 @@ def _quota_renderer(
         "scheduler-fail-current": render_quota_scheduler_failure_markdown,
         "spend-slot": render_quota_slot_preview_markdown,
         "void-slot": render_quota_slot_preview_markdown,
+        "reconcile": render_quota_reconcile_report_markdown,
     }.get(command, render_quota_markdown)
 
 
@@ -664,6 +670,24 @@ def handle_quota_command(
                 scheduler_context=scheduler_context,
                 operator_inbox_urgency_projector=operator_inbox_urgency_projector,
             )
+        elif args.quota_command == "reconcile":
+            from ..history import load_registry
+            from ..registry import registry_goals
+
+            registry = load_registry(registry_path)
+            window_hours_by_goal = {
+                str(goal.get("id")): int(
+                    goal_quota_config(goal).get("window_hours") or 24
+                )
+                for goal in registry_goals(registry)
+            }
+            payload = reconcile_quota(
+                status_payload,
+                goal_id=args.goal_id or None,
+                execute=bool(args.execute),
+                tolerance_seconds=int(args.timestamp_tolerance_seconds),
+                window_hours_by_goal=window_hours_by_goal or None,
+            )
         elif args.quota_command == "spend-slot":
             payload = spend_quota_slot(
                 status_payload,
@@ -709,7 +733,12 @@ def handle_quota_command(
             runtime_root_arg=runtime_root_arg,
             error=exc,
         )
-    if should_log_quota(args.quota_command, payload):
+    # Reconciliation is an audit/read-model command with its own durable
+    # report artifacts; it never appends rollout lifecycle events.
+    if (
+        args.quota_command != "reconcile"
+        and should_log_quota(args.quota_command, payload)
+    ):
         spend_turn_instance_id = _effective_spend_turn_instance_id(
             payload,
             heartbeat_turn_id=heartbeat_turn_id,

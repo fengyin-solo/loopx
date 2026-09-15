@@ -1391,6 +1391,60 @@ The important behavior is that automations ask LoopX whether a goal is
 eligible before spending compute. They should not rely only on their own cron
 period as the priority model.
 
+## Quota Reconciliation
+
+Used quota is derived only from append-only run records: `quota_slot_spent`
+events add slots and `quota_slot_voided` events subtract slots when their
+`voided_run_generated_at` matches a spend run exactly. Settlement step
+receipts (`quota_spend` / `quota_void` events in `rollout-event-log.jsonl`)
+are a separate evidence stream. `loopx quota reconcile` cross-checks the two
+streams by run identity and classifies the differences:
+
+| Discrepancy | Meaning | Correction |
+| --- | --- | --- |
+| `duplicate_billing` | More than one spend event for the same run identity (settlement `effect_id`, or typed `turn_instance_id` + binding) | Append a void for every duplicate beyond the canonical earliest run |
+| `missing_void` | A committed void receipt names a spend run that has no matching void event | Append the missing void |
+| `reimbursement_without_consumption` | A committed spend receipt exists but no spend event carries its settlement `effect_id` | Backfill the spend at the receipt timestamp with the receipt's slots |
+| `timestamp_drift` | A void's `voided_run_generated_at` matches no spend, but matches a unique spend within `--timestamp-tolerance-seconds` (default 60) | Append a corrected void at the exact spend timestamp; the drifted event stays append-only |
+
+Non-fixable situations are reported as diagnostics and never auto-modified:
+equidistant drift candidates (`ambiguous_timestamp_drift`), void receipts or
+void events pointing at no spend (`orphan_void_receipt` /
+`orphan_void_event`), receipt/ledger slot amount mismatches
+(`amount_mismatch`), and legacy void receipts without a typed target
+(`receipt_without_target_key`).
+
+```bash
+# Read-only preview for every goal (this is the default; nothing is written)
+loopx quota reconcile
+loopx quota reconcile --goal-id <goal-id> --format json
+
+# Apply the idempotent corrections, then verify the follow-up scan is clean
+loopx quota reconcile --execute
+loopx quota reconcile --goal-id <goal-id> --execute --timestamp-tolerance-seconds 30
+```
+
+The report carries per-kind counts, fixable totals, the affected quota entry
+count, and per-goal current-window slot deltas. Each discrepancy lists the
+exact correction (append void / append spend, slots, target run, correction
+effect id).
+
+### Reconciliation transaction semantics
+
+- Corrections are ordinary `quota_slot_spent` / `quota_slot_voided` events
+  carrying a typed `reconciliation` block
+  (`quota_reconciliation_correction_v0`). They flow through the existing
+  rolling-window aggregation, so goals without discrepancies—and all other
+  quota commands—keep identical state and output.
+- Every correction has a deterministic effect id
+  (`quota-reconcile:<kind>:<hash>`), a compare-and-swap index digest, and a
+  `prepared`/`committed` receipt. Repeating the same discrepancy replays
+  without appending a duplicate deduction or backfill.
+- Each goal is one serialized batch under the run-index mutation lock; a
+  crash between the prepared receipt, artifact writes, and the index append
+  is repaired on the next invocation (truncated index tail included).
+- The dry-run scan takes no locks and writes no files.
+
 ## Acceptance Criteria
 
 - Each active goal can expose a compute quota such as `1.0`, `0.5`, `0.3`, or

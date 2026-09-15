@@ -67,6 +67,11 @@ from .control_plane.quota.slot_accounting import (
     record_quota_slot_spend_from_preview,
 )
 from .control_plane.quota.spend_commit import replay_quota_spend_by_effect_ref
+from .control_plane.quota.reconcile import (
+    DEFAULT_TIMESTAMP_TOLERANCE_SECONDS,
+    commit_quota_reconciliation,
+    scan_quota_reconciliation,
+)
 from .control_plane.quota.void_commit import (
     build_quota_slot_void_event as build_quota_slot_void_event,
     build_quota_slot_void_preview_for_decision,
@@ -1287,6 +1292,80 @@ def void_quota_slot(
         source=source,
         reason_summary=reason_summary,
     )
+
+
+def reconcile_quota(
+    status_payload: dict[str, Any],
+    *,
+    goal_id: str | None = None,
+    execute: bool = False,
+    tolerance_seconds: int = DEFAULT_TIMESTAMP_TOLERANCE_SECONDS,
+    window_hours_by_goal: dict[str, int] | None = None,
+    now: str | None = None,
+) -> dict[str, Any]:
+    """Cross-check spend/void run events against settlement receipts.
+
+    The default mode is a read-only dry-run report. With ``execute=True`` each
+    goal carrying fixable discrepancies is committed as its own idempotent,
+    crash-recoverable batch. Targets without discrepancies are never touched.
+    """
+
+    from .control_plane.runtime.time import now_local_iso
+    from .runtime import validate_goal_id_path_segment
+
+    raw_runtime_root = status_payload.get("runtime_root")
+    if not raw_runtime_root:
+        raise ValueError("status payload does not include runtime_root")
+    runtime_root = Path(str(raw_runtime_root)).expanduser()
+    goal_ids = [validate_goal_id_path_segment(goal_id)] if goal_id else None
+
+    generated_at = now_local_iso()
+    report = scan_quota_reconciliation(
+        runtime_root,
+        goal_ids=goal_ids,
+        tolerance_seconds=tolerance_seconds,
+        window_hours_by_goal=window_hours_by_goal,
+        now=now,
+        generated_at=generated_at,
+    )
+    if not execute:
+        return report
+
+    applied: list[dict[str, Any]] = []
+    for goal_report in report.get("goals") or []:
+        goal_report_id = str(goal_report.get("goal_id") or "")
+        discrepancy_ids = [
+            str(discrepancy.get("discrepancy_id"))
+            for discrepancy in goal_report.get("discrepancies") or []
+            if discrepancy.get("fixable") is True
+        ]
+        if not discrepancy_ids:
+            continue
+        result = commit_quota_reconciliation(
+            runtime_root,
+            goal_report_id,
+            discrepancy_ids,
+            execute=True,
+            expected_index_digest=goal_report.get("index_digest"),
+            generated_at=generated_at,
+            tolerance_seconds=tolerance_seconds,
+        )
+        applied.append(result)
+
+    # Rescan after applying so the returned report reflects the fixed state.
+    final_report = scan_quota_reconciliation(
+        runtime_root,
+        goal_ids=goal_ids,
+        tolerance_seconds=tolerance_seconds,
+        window_hours_by_goal=window_hours_by_goal,
+        now=now,
+        generated_at=generated_at,
+    )
+    final_report["dry_run"] = False
+    final_report["executed"] = True
+    final_report["appended"] = any(bool(result.get("appended")) for result in applied)
+    final_report["applied_batches"] = applied
+    return final_report
 
 
 def spend_quota_slot(

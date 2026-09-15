@@ -8,6 +8,7 @@ import pytest
 from loopx.cli import build_parser, main, output_format, resolve_global_output_format
 from loopx.cli_commands import doctor as doctor_command
 from loopx.cli_commands import todo as todo_command
+from loopx.cli_commands.quota_context import QuotaCommandValidationError
 from loopx.cli_commands.quota_request import validate_quota_command_request
 from loopx.cli_commands.todo_argument_validation import (
     validate_todo_add_options,
@@ -22,6 +23,37 @@ from loopx.cli_commands.todo_argument_validation import (
     validate_shared_todo_options,
 )
 from loopx.control_plane.work_items.task_lease import TaskLeaseError
+
+
+def test_quota_reconcile_validation_rules() -> None:
+    # reconcile is allowed to scan every goal without --goal-id.
+    all_goals = build_parser().parse_args(["quota", "reconcile"])
+    validate_quota_command_request(all_goals)
+    assert all_goals.goal_id is None
+    assert all_goals.execute is False
+    assert all_goals.timestamp_tolerance_seconds == 60
+
+    one_goal = build_parser().parse_args(
+        [
+            "quota",
+            "reconcile",
+            "--goal-id",
+            "example-goal",
+            "--execute",
+            "--timestamp-tolerance-seconds",
+            "5",
+        ]
+    )
+    validate_quota_command_request(one_goal)
+    assert one_goal.timestamp_tolerance_seconds == 5
+
+    with pytest.raises(QuotaCommandValidationError) as exc_info:
+        validate_quota_command_request(
+            build_parser().parse_args(
+                ["quota", "reconcile", "--dry-run", "--execute"]
+            )
+        )
+    assert "only one of --dry-run or --execute" in str(exc_info.value)
 
 
 def test_todo_handler_expands_shared_paths_and_keeps_suggest_project_only(

@@ -96,9 +96,17 @@ def register_quota_monitor_poll_request_arguments(
 def validate_quota_command_request(args: argparse.Namespace) -> None:
     command = args.quota_command
     begin_turn = bool(getattr(args, "begin_turn", False))
-    if command not in {"status", "plan"} and not args.goal_id:
+    if (
+        command not in {"status", "plan", "reconcile"}
+        and not args.goal_id
+    ):
         raise QuotaCommandValidationError(
             f"`loopx quota {command}` requires --goal-id"
+        )
+    if command == "reconcile" and args.timestamp_tolerance_seconds < 0:
+        raise QuotaCommandValidationError(
+            "`loopx quota reconcile` requires a non-negative "
+            "--timestamp-tolerance-seconds"
         )
     scheduler_commands = {
         "scheduler-ack",

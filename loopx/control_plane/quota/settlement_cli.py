@@ -335,6 +335,9 @@ def quota_rollout_details(
         "appended": bool(payload.get("appended")),
         "slots": payload.get("slots") or "",
         "source": payload.get("source") or "",
+        "voided_run_generated_at": (
+            payload.get("voided_run_generated_at") or ""
+        ),
         "todo_id": todo_id or "",
         "replan_obligation_id": replan_obligation_id or "",
         "semantic_replan_obligation_id": semantic_replan_obligation_id or "",
