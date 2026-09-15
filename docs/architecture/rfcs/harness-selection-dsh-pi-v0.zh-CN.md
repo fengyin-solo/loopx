@@ -29,7 +29,7 @@ Pi 保留为 managed runtime 候选。前者利用已存在的被动 observer �
 
 | 角色 | 来源 | 当前选型 | 晋级门槛 |
 | --- | --- | --- | --- |
-| 默认托管执行宿主 | LoopX Turn 加 `dsh` 宿主适配器，并绑定到运维方提供的模型端点 | 托管有界 Turn 的已交付默认值 | 保持类型化 host request/result、独立验证与凭据归属运维方的边界；没有同等或更强的契约不替换 |
+| 默认托管执行宿主 | LoopX Turn 加 `dsh` 宿主适配器，并绑定到运维方提供的模型端点 | 运维方配置了模型凭据时，托管有界 Turn 的已交付默认值；未配置时默认 `codex-cli` | 保持类型化 host request/result、独立验证与凭据归属运维方的边界；没有同等或更强的契约不替换 |
 | 受支持的替代 Turn 宿主 | LoopX Turn 加 `codex-cli` 适配器 | 受支持，但同样必须绑定运维方提供的 provider | 任何托管通道都不得依赖某个人的 CLI 订阅 |
 | 可选的 Turn 宿主与 L1 首个事件源 | DSH | opt-in，未晋级 | 本文 C0、C1、开销、保留与 Mode B 各行被真实执行并通过评审 |
 | 可选的可见宿主循环 | Pi | 不是 managed runtime | 先声明按绑定持久化且可回读的会话模式，证明重启下的单执行器行为、"对话不是回执"、宿主本地状态非权威，并提供一条真实宿主重启行 |
@@ -37,13 +37,21 @@ Pi 保留为 managed runtime 候选。前者利用已存在的被动 observer �
 ### 托管宿主绑定与真实环境验证（2026-09-15）
 
 一个托管宿主绑定要说明四件事：宿主适配器、provider、模型，以及凭据来自哪里。
-默认绑定是 DSH Turn 宿主 + provider `deepseek-official` + 模型 `deepseek-flash`
+DSH 绑定是 DSH Turn 宿主 + provider `deepseek-official` + 模型 `deepseek-flash`
 （DeepSeek V4.1 Flash），端点取自运维方环境（`DEEPSEEK_BASE_URL`），凭据取自
-运维方环境（`DEEPSEEK_API_KEY`）。因此托管通道不会依赖某个开发者本机 CLI 订阅
-是否可用、是否还有额度或是否已登录。
+运维方环境（`DEEPSEEK_API_KEY`）。
+
+LoopX 用该凭据解析托管有界 Turn 的默认宿主
+（`loopx/control_plane/turn_driver/host_binding.py`）：配置了 `DEEPSEEK_API_KEY`
+时，`loopx turn plan` 与 `loopx turn run-once` 默认走 DSH 宿主；未配置凭据时
+保持 `codex-cli`。因此解析到 DSH 宿主的托管通道不会依赖某个开发者本机 CLI
+订阅是否可用、是否还有额度或是否已登录；仍然跑在 `codex-cli` 的通道则尚未满足
+上表中"绑定运维方提供的 provider"这一门槛。
 
 该绑定已验证：
 
+- 默认值解析本身不需要任何 provider 调用即可验证：配置凭据时选中 `dsh`，
+  空值或仅空白的值保持 `codex-cli`，显式 `--host` 仍然优先（PR #4409）；
 - 两条 Turn 宿主路径都在真实 SDK 与 runtime（`deepseek-harness-sdk==0.1.2a3`）
   下通过：进程内 `--host dsh` 路径与 `generic-cli` 子进程路径；
 - 一次真实托管 Turn 达到 `validated_progress`：宿主执行有界动作，独立 validator

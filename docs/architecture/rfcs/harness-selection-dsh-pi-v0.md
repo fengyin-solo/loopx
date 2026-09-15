@@ -33,7 +33,7 @@ upstream harness can do. The managed bounded execution unit is the governed Turn
 
 | Role | Source | Selection today | Promotion gate |
 | --- | --- | --- | --- |
-| Default managed execution host | LoopX Turn plus the `dsh` host adapter, bound to an operator-supplied model endpoint | shipped default for bounded managed Turns | keep the typed host request/result, independent validation, and the operator-owned credential boundary; do not replace it without an equal or stronger contract |
+| Default managed execution host | LoopX Turn plus the `dsh` host adapter, bound to an operator-supplied model endpoint | shipped default for bounded managed Turns once the operator configured a model credential, otherwise `codex-cli` | keep the typed host request/result, independent validation, and the operator-owned credential boundary; do not replace it without an equal or stronger contract |
 | Supported alternative Turn host | LoopX Turn plus the `codex-cli` adapter | supported, and must also be bound to an operator-supplied provider | no managed lane may depend on an individual's personal CLI subscription |
 | Opt-in Turn host and first L1 event source | DSH | opt-in, not promoted | the C0, C1, overhead, retention and Mode B rows in this document being run and reviewed |
 | Optional visible host loop | Pi | not a managed runtime | declare a per-binding session mode with readback, prove single-executor behavior under restart, "conversation is not a receipt", non-authoritative host-local state, and one real-host restart row |
@@ -41,15 +41,24 @@ upstream harness can do. The managed bounded execution unit is the governed Turn
 ### Managed host binding and live qualification (2026-09-15)
 
 A managed host binding names four things: the host adapter, the provider, the
-model, and where the credential comes from. The default binding is the DSH Turn
-host with provider `deepseek-official`, model `deepseek-flash`
-(DeepSeek V4.1 Flash), an endpoint from the operator environment
-(`DEEPSEEK_BASE_URL`) and a credential from the operator environment
-(`DEEPSEEK_API_KEY`). A managed lane therefore never depends on an individual
-developer's CLI subscription being available, funded, or logged in.
+model, and where the credential comes from. The DSH binding is the DSH Turn host
+with provider `deepseek-official`, model `deepseek-flash` (DeepSeek V4.1 Flash),
+an endpoint from the operator environment (`DEEPSEEK_BASE_URL`) and a credential
+from the operator environment (`DEEPSEEK_API_KEY`).
+
+LoopX resolves the default host for bounded managed Turns from that credential
+(`loopx/control_plane/turn_driver/host_binding.py`): with `DEEPSEEK_API_KEY`
+configured, `loopx turn plan` and `loopx turn run-once` default to the DSH host;
+with no configured credential they stay on `codex-cli`. A managed lane that
+resolves to the DSH host therefore never depends on an individual developer's CLI
+subscription being available, funded, or logged in, and a lane that still runs on
+`codex-cli` has not yet met the operator-provider part of the binding gate above.
 
 Verified for this binding:
 
+- the resolved default is covered without any provider call: a configured
+  credential selects `dsh`, an empty or whitespace-only value keeps `codex-cli`,
+  and an explicit `--host` still wins (PR #4409);
 - both Turn host paths pass with the real SDK and runtime
   (`deepseek-harness-sdk==0.1.2a3`): the in-process `--host dsh` path and the
   `generic-cli` subprocess path;
