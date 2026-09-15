@@ -305,3 +305,28 @@ must demonstrate, for one steward session, that the model work lands on the
 operator credential and that no default path reaches an individual
 subscription. This document authorizes no new scheduler, retry authority or
 second monitoring subsystem to make that demonstration pass.
+
+## Steward Channel Readiness by Milestone (2026-09-15)
+
+The steward channel consumes both this document's host selection and the manager
+milestones in
+[capable-manager-semantic-handoff-v0](./capable-manager-semantic-handoff-v0.md).
+This section records which steward-channel behaviours those milestones can rely
+on today and which stay unverified. It states product contracts, not conversation
+content: no live channel transcript, audience identity, dated incident or
+operator-local path is recorded here.
+
+| Milestone | Steward-channel contract in scope | Evidence state on 2026-09-15 |
+| --- | --- | --- |
+| Manager M1 — useful host agent | The channel resolves and reports its effective executor, model and source, and a host without a chat transport fails with a typed reason instead of a silent individual-login fallback | Stack-only (PR #4409, #4416, #4417): credential-resolved endpoint and model, `dsh_chat_transport_unsupported`, managed-executor readback, and the gated `managed_host_chat_transport_unsupported` request. The upstream **session identity** is still not projected to the channel, so a channel answer cannot yet prove which session served it |
+| Manager M2 — semantic continuation | Receiver resolution across registered running lanes; typed per-source coverage and freshness; a goal-level milestone the report can lead with instead of coverage disclaimers | Not implemented. Delegation resolves against the supplied delegation catalog, so a request whose owning lane is absent from that catalog is refused or routed to an unrelated lane; a provider read failure surfaces as raw error text instead of a typed source row; the manager context exposes deliveries and coverage but no goal-level milestone field to synthesize from |
+| Manager M3 — automatic complete exchange | A persisted answer that exceeds or violates the channel's outbound text contract is split and re-sent under a stable answer identity; an ambiguous or failed send is reconciled instead of replaced by a local notice; the return path survives a transport restart; rich markdown renders as structured text | Partially mitigated. `loopx/extensions/lark/outbound.py` fails closed on an over-limit or malformed payload, and the channel reports that local failure without re-delivering the persisted answer; one answer carries no idempotency identity, so a retry can duplicate it; structured rendering is not guaranteed |
+| Host modes M0-M1 | The channel's executor selection and its bounded one-segment execution | Covered by this document: the credential-resolved binding and the Mode B acceptance above |
+| Host modes M2-M3 | Attached-host parity, typed unavailability, and mode-aware projection with no mode inference and no second executor | Not implemented for the channel; an external audience still degrades to `restricted`, and the channel projects neither its mode nor its session status |
+
+Two boundaries stay fixed across all five rows. The channel remains an entry point
+and projection of one manager Session: it owns no profile, no permission state, no
+second executor and no work authority, so a richer answer contract must not widen
+what the channel may read or change. And no row is promoted by this document; the
+M1-M4 integration milestones and the cross-frontend projection row still belong to
+[Agent Session Execution Modes](./agent-session-execution-modes-v0.md).
