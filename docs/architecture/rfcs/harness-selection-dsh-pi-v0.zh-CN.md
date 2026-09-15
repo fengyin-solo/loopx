@@ -131,6 +131,14 @@ LoopX 自身的 dsh 固定版本跟随最新发布通道，而不是未发布的
 这是接入成本和合同差异，不是说 Pi 没有事件，或 DSH 不能使用其他模型。
 两个 harness 都有控制 API；“被动”是具体 adapter 和实际加载依赖的性质。
 
+依赖 dsh 的两个 LoopX 面并不一起移动：有界 Turn 宿主使用上文记录的 Python
+SDK/runtime 固定版本（`0.1.5rc1`，已发布通道）；而 dsh 侧插件
+（`packages/dsh-loopx-plugin`）的开发与客户端面仍构建在 `0.1.1-rc.2` 上，尽管其
+clean-Docker smoke 已断言 `dsh --version == 0.1.5-rc.1`。0.1.5 线不再发布
+`@deepseek-ai/dsh-client-runtime`（最后发布版本为 `0.1.1-rc.2`），客户端 runner 改为
+`@deepseek-ai/dsh-cordis-client-runner`。该升级作为独立的 pin 项跟踪，不改变上文的
+L1 observer 契约。
+
 ## 数据流与权限
 
 用户需要区分“没有证据”“执行有异常”“观察过程不可信”，而不是只得到一个绿灯：

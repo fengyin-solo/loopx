@@ -152,6 +152,15 @@ These are integration-cost and contract observations, not claims that Pi lacks
 events or DSH cannot support other models. Both expose control-capable APIs;
 passivity is a property of the selected adapter and its loaded dependencies.
 
+The two LoopX surfaces that depend on dsh do not move together. The bounded Turn
+host uses the Python SDK/runtime pin recorded above (`0.1.5rc1`, the released
+channel). The dsh-side plugin (`packages/dsh-loopx-plugin`) still builds its
+development and client surfaces against `0.1.1-rc.2` while its clean-Docker smoke
+already asserts `dsh --version == 0.1.5-rc.1`, and the 0.1.5 line no longer
+publishes `@deepseek-ai/dsh-client-runtime` (last released 0.1.1-rc.2), moving
+the client runner to `@deepseek-ai/dsh-cordis-client-runner`. That upgrade is
+tracked as its own pin item and does not change the L1 observer contract above.
+
 ## Data and Authority Flow
 
 The operator needs to distinguish missing evidence, unhealthy execution and
