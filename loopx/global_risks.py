@@ -8,6 +8,8 @@ from importlib import import_module
 from pathlib import Path
 from typing import Any, Protocol, cast
 
+from . import risk_ledger
+
 class _CollectStatus(Protocol):
 	def __call__(
 		self,
@@ -298,24 +300,30 @@ def _normalize_contract_diagnostic(
 			scope=scope,
 			goal_id=goal_id,
 		)
-		rows.append(
-			{
-				"goal_id": _redact_text(goal_id, limit=120) or None,
-				"scope": _redact_text(scope, limit=120),
-				"category": category,
-				"kind": _redact_text(code, limit=120),
-				"severity": _severity(diagnostic.get("severity"), default="high"),
-				"summary": _redact_text(diagnostic.get("message"))
-				or f"Contract check {code} failed.",
-				"occurrence_id": occurrence_id,
-				"occurrence_count": 1,
-				"evidence_refs": [
-					f"{_CONTRACT_SOURCE}:{code}:{occurrence_id}"
-				],
-				"next_safe_action": _contract_action(code),
-				"requires_user_approval": False,
-			}
+		row = {
+			"goal_id": _redact_text(goal_id, limit=120) or None,
+			"scope": _redact_text(scope, limit=120),
+			"category": category,
+			"kind": _redact_text(code, limit=120),
+			"severity": _severity(diagnostic.get("severity"), default="high"),
+			"summary": _redact_text(diagnostic.get("message"))
+			or f"Contract check {code} failed.",
+			"occurrence_id": occurrence_id,
+			"occurrence_count": 1,
+			"source_surface": _CONTRACT_SOURCE,
+			"evidence_refs": [
+				f"{_CONTRACT_SOURCE}:{code}:{occurrence_id}"
+			],
+			"next_safe_action": _contract_action(code),
+			"requires_user_approval": False,
+		}
+		row["risk_id"] = risk_ledger.stable_risk_id(
+			source_surface=_CONTRACT_SOURCE,
+			kind=str(row["kind"]),
+			scope=str(row["scope"]),
+			goal_id=row["goal_id"],
 		)
+		rows.append(row)
 	return rows
 
 
@@ -350,24 +358,30 @@ def _normalize_registry_finding(
 	next_safe_action = _redact_text(finding.get("recommended_action"))
 	if not next_safe_action:
 		next_safe_action = f"Inspect and resolve global registry finding {kind}."
-	return [
-		{
-			"goal_id": _redact_text(goal_id, limit=120) or None,
-			"scope": scope,
-			"category": "failing_check",
-			"kind": _redact_text(kind, limit=120),
-			"severity": severity,
-			"summary": _redact_text(finding.get("message"))
-			or f"Global registry finding {kind} requires attention.",
-			"occurrence_id": occurrence_id,
-			"occurrence_count": 1,
-			"evidence_refs": [
-				f"{_REGISTRY_SOURCE}:{kind}:{occurrence_id}"
-			],
-			"next_safe_action": next_safe_action,
-			"requires_user_approval": False,
-		}
-	]
+	row = {
+		"goal_id": _redact_text(goal_id, limit=120) or None,
+		"scope": scope,
+		"category": "failing_check",
+		"kind": _redact_text(kind, limit=120),
+		"severity": severity,
+		"summary": _redact_text(finding.get("message"))
+		or f"Global registry finding {kind} requires attention.",
+		"occurrence_id": occurrence_id,
+		"occurrence_count": 1,
+		"source_surface": _REGISTRY_SOURCE,
+		"evidence_refs": [
+			f"{_REGISTRY_SOURCE}:{kind}:{occurrence_id}"
+		],
+		"next_safe_action": next_safe_action,
+		"requires_user_approval": False,
+	}
+	row["risk_id"] = risk_ledger.stable_risk_id(
+		source_surface=_REGISTRY_SOURCE,
+		kind=str(row["kind"]),
+		scope=str(row["scope"]),
+		goal_id=row["goal_id"],
+	)
+	return [row]
 
 
 def _valid_timestamp(value: object) -> str | None:
@@ -426,36 +440,42 @@ def _collect_stale_host_poll_risks(
 		kind = "stale_host_poll"
 		goal_id = _redact_text(str(goal.get("id") or ""), limit=120) or None
 		reason = _redact_text(str(raw_risk.get("reason") or ""), limit=200)
-		risks.append(
-			{
-				"goal_id": goal_id,
-				"scope": "goal",
-				"category": "stale_run",
-				"kind": kind,
-				"severity": _severity("warning"),
-				"summary": (
-					reason
-					or "Host polling went quiet while the loop expected continuation."
-				),
-				"reason": reason or None,
-				"occurrence_id": _occurrence_id(
-					source_surface=_HOST_POLL_SOURCE,
-					source_index=source_index,
-					kind=kind,
-					scope="goal",
-					goal_id=goal_id,
-				),
-				"occurrence_count": 1,
-				"evidence_refs": [
-					f"{_HOST_POLL_SOURCE}:{kind}:{str(raw_risk.get('last_poll_at') or '')}"
-				],
-				"next_safe_action": (
-					"Check the host session and LoopX gates; restart the goal "
-					"worker or resume the bridge when the loop should continue."
-				),
-				"requires_user_approval": True,
-			}
+		row = {
+			"goal_id": goal_id,
+			"scope": "goal",
+			"category": "stale_run",
+			"kind": kind,
+			"severity": _severity("warning"),
+			"summary": (
+				reason
+				or "Host polling went quiet while the loop expected continuation."
+			),
+			"reason": reason or None,
+			"occurrence_id": _occurrence_id(
+				source_surface=_HOST_POLL_SOURCE,
+				source_index=source_index,
+				kind=kind,
+				scope="goal",
+				goal_id=goal_id,
+			),
+			"occurrence_count": 1,
+			"source_surface": _HOST_POLL_SOURCE,
+			"evidence_refs": [
+				f"{_HOST_POLL_SOURCE}:{kind}:{str(raw_risk.get('last_poll_at') or '')}"
+			],
+			"next_safe_action": (
+				"Check the host session and LoopX gates; restart the goal "
+				"worker or resume the bridge when the loop should continue."
+			),
+			"requires_user_approval": True,
+		}
+		row["risk_id"] = risk_ledger.stable_risk_id(
+			source_surface=_HOST_POLL_SOURCE,
+			kind=kind,
+			scope="goal",
+			goal_id=goal_id,
 		)
+		risks.append(row)
 	return risks
 
 
@@ -500,10 +520,17 @@ def _normalize_stale_warning(
 		"reason": reason or None,
 		"occurrence_id": occurrence_id,
 		"occurrence_count": 1,
+		"source_surface": _STALE_SOURCE,
 		"evidence_refs": [f"{_STALE_SOURCE}:{kind}:{occurrence_id}"],
 		"next_safe_action": "Run refresh-state before trusting latest-run routing.",
 		"requires_user_approval": False,
 	}
+	row["risk_id"] = risk_ledger.stable_risk_id(
+		source_surface=_STALE_SOURCE,
+		kind=kind,
+		scope=scope,
+		goal_id=row["goal_id"],
+	)
 	for field in ("latest_run_generated_at", "active_state_updated_at"):
 		timestamp = _valid_timestamp(stale_warning.get(field))
 		if timestamp is None:
@@ -696,6 +723,117 @@ def _malformed_projection_error(
 	)
 
 
+_LEDGER_PRIVATE_FIELDS = ("source_surface", "risk_id")
+
+
+def _normalize_risk_filters(
+	status_filter: list[str] | None,
+	severity_filter: list[str] | None,
+	assignee_filter: str | None,
+) -> tuple[set[str], set[str], str | None]:
+	statuses: set[str] = set()
+	for value in status_filter or []:
+		token = str(value or "").strip()
+		if token not in risk_ledger.LIFECYCLE_VALUES:
+			raise ValueError(f"unknown lifecycle status filter {token}")
+		statuses.add(token)
+	severities: set[str] = set()
+	for value in severity_filter or []:
+		token = str(value or "").strip()
+		if token not in SEVERITY_RANK:
+			raise ValueError(f"unknown severity filter {token}")
+		severities.add(token)
+	assignee: str | None = None
+	if assignee_filter:
+		text = str(assignee_filter).strip()
+		if text != "unassigned":
+			normalized = risk_ledger.normalize_assignee_token(text)
+			if normalized is None:
+				raise ValueError(f"invalid assignee filter {text}")
+			text = normalized
+		assignee = text
+	return statuses, severities, assignee
+
+
+def _fold_rows_for_ledger(
+	aggregated: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+	"""Collapse same-identity projection rows for one scan batch.
+
+	Distinct source positions keep separate ``occurrence_id`` rows in the
+	projection, but the ledger counts them under one stable identity.
+	"""
+
+	folded: dict[str, dict[str, Any]] = {}
+	order: list[str] = []
+	for row in aggregated:
+		risk_id = row.get("risk_id")
+		if not isinstance(risk_id, str) or not risk_id:
+			continue
+		existing = folded.get(risk_id)
+		if existing is None:
+			merged = {
+				key: value
+				for key, value in row.items()
+				if key != "occurrence_id"
+			}
+			merged["evidence_refs"] = [
+				str(item) for item in as_list(row.get("evidence_refs")) if str(item)
+			]
+			folded[risk_id] = merged
+			order.append(risk_id)
+			continue
+		existing["occurrence_count"] = _positive_occurrence_count(
+			existing.get("occurrence_count")
+		) + _positive_occurrence_count(row.get("occurrence_count"))
+		incoming_severity = str(row.get("severity") or "")
+		if SEVERITY_RANK.get(incoming_severity, 4) < SEVERITY_RANK.get(
+			str(existing.get("severity") or ""), 4
+		):
+			existing["severity"] = incoming_severity
+		evidence_refs = [str(item) for item in as_list(existing.get("evidence_refs"))]
+		for item in as_list(row.get("evidence_refs")):
+			text = str(item)
+			if text and text not in evidence_refs:
+				evidence_refs.append(text)
+		existing["evidence_refs"] = evidence_refs
+	return [folded[risk_id] for risk_id in order]
+
+
+def _ledger_annotation(record: dict[str, Any]) -> dict[str, Any]:
+	return {
+		"risk_id": record.get("risk_id"),
+		"status": record.get("status"),
+		"first_seen_at": record.get("first_seen_at"),
+		"last_seen_at": record.get("last_seen_at"),
+		"occurrence_count": record.get("occurrence_count"),
+		"scan_count": record.get("scan_count"),
+		"assignee": record.get("assignee"),
+		"suppress_until": record.get("suppress_until"),
+		"reopen_count": record.get("reopen_count", 0),
+		"present_in_latest_scan": record.get("present_in_latest_scan", True),
+	}
+
+
+def _projection_risk_row(
+	row: dict[str, Any],
+	*,
+	ledger_records: dict[str, dict[str, Any]] | None,
+) -> dict[str, Any]:
+	public_row = {
+		key: value
+		for key, value in row.items()
+		if key not in _LEDGER_PRIVATE_FIELDS
+	}
+	if ledger_records is not None:
+		risk_id = row.get("risk_id")
+		if isinstance(risk_id, str):
+			record = ledger_records.get(risk_id)
+			if record is not None:
+				public_row["ledger"] = _ledger_annotation(record)
+	return public_row
+
+
 def build_global_risks(
 	*,
 	registry_path: Path,
@@ -704,10 +842,40 @@ def build_global_risks(
 	agent_id: str | None,
 	time_range: str,
 	limit: int,
+	ledger_path: Path | str | None = None,
+	status_filter: list[str] | None = None,
+	severity_filter: list[str] | None = None,
+	assignee_filter: str | None = None,
+	scan_id: str | None = None,
 ) -> dict[str, Any]:
 	normalized_time_range = _normalize_time_range(time_range)
 	normalized_limit = min(max(1, limit), MAX_RESULT_LIMIT)
 	scan_limit = min(max(normalized_limit * 4, 40), MAX_SCAN_LIMIT)
+	try:
+		filter_statuses, filter_severities, filter_assignee = _normalize_risk_filters(
+			status_filter, severity_filter, assignee_filter
+		)
+	except ValueError as exc:
+		return build_global_risks_error(
+			exc,
+			time_range=normalized_time_range,
+			error_code="invalid_risk_filter",
+		)
+	filters_active = bool(
+		filter_statuses or filter_severities or filter_assignee is not None
+	)
+	resolved_ledger_path = (
+		Path(ledger_path).expanduser()
+		if ledger_path is not None
+		else risk_ledger.risk_ledger_path_for_registry(registry_path)
+	)
+	ledger_established = resolved_ledger_path.exists()
+	if filters_active and not ledger_established:
+		return build_global_risks_error(
+			"risk ledger filters require `loopx risk-ledger init` at this registry",
+			time_range=normalized_time_range,
+			error_code="risk_ledger_not_initialized",
+		)
 	try:
 		status_result: object = collect_status(
 			registry_path=registry_path,
@@ -820,39 +988,112 @@ def build_global_risks(
 	source_rows_truncated = source_rows_truncated or history_truncated
 
 	aggregated = _aggregate_risks(risks)
+
+	ledger_records: dict[str, dict[str, Any]] | None = None
+	ledger_summary: dict[str, Any] | None = None
+	ledger_scan_id = scan_id or risk_ledger.make_scan_id()
+	generated_at = now_utc_iso()
+	if ledger_established:
+		try:
+			merge_state, merge_stats = risk_ledger.merge_scan_file(
+				resolved_ledger_path,
+				_fold_rows_for_ledger(aggregated),
+				scan_id=ledger_scan_id,
+				scanned_at=generated_at,
+				now=generated_at,
+			)
+			if merge_state == "merged":
+				stored = risk_ledger.load_ledger(resolved_ledger_path)
+				if isinstance(stored, dict) and isinstance(
+					stored.get("records"), dict
+				):
+					ledger_records = stored["records"]
+					ledger_summary = {
+						"enabled": True,
+						"record_count": len(ledger_records),
+						"by_status": risk_ledger.by_status(ledger_records),
+						"reopened_count": int(
+							(merge_stats or {}).get("reopened_count", 0)
+						),
+						"suppressed_expired_count": int(
+							(merge_stats or {}).get("suppressed_expired_count", 0)
+						),
+					}
+		except risk_ledger.RiskLedgerUnreadable as exc:
+			if filters_active:
+				return build_global_risks_error(
+					exc,
+					time_range=normalized_time_range,
+					error_code="risk_ledger_unreadable",
+				)
+			warnings.append(
+				_warning(
+					"risk_ledger_unreadable",
+					source="loopx.risk_ledger",
+					detail=str(exc)[:200],
+				)
+			)
+
+	if ledger_records is not None and filters_active:
+		def _matches_ledger_filters(row: dict[str, Any]) -> bool:
+			record = ledger_records.get(str(row.get("risk_id") or ""))
+			if record is None:
+				return False
+			return risk_ledger.record_matches_filters(
+				record,
+				statuses=filter_statuses or None,
+				severities=filter_severities or None,
+				assignee=filter_assignee,
+			)
+
+		aggregated = [row for row in aggregated if _matches_ledger_filters(row)]
+
 	aggregated.sort(key=_risk_sort_key)
 	retained = aggregated[:normalized_limit]
+	retained_public = [
+		_projection_risk_row(row, ledger_records=ledger_records) for row in retained
+	]
 	full_groups = _groups(aggregated)
-	retained_groups = _groups(retained)
+	retained_groups = _groups(retained_public)
 	matched_risk_count = len(aggregated)
-	returned_risk_count = len(retained)
+	returned_risk_count = len(retained_public)
 	warning_count = len(warnings)
+	request = _request(normalized_time_range)
+	if filters_active:
+		request["ledger_filters"] = {
+			"status": sorted(filter_statuses),
+			"severity": sorted(filter_severities),
+			"assignee": filter_assignee,
+		}
+	summary: dict[str, Any] = {
+		"source_health_ok": status_payload.get("ok") is True,
+		"matched_risk_count": matched_risk_count,
+		"matched_occurrence_count": sum(
+			_positive_occurrence_count(risk.get("occurrence_count"))
+			for risk in aggregated
+		),
+		"returned_risk_count": returned_risk_count,
+		"source_scan_limit": scan_limit,
+		"source_rows_truncated": source_rows_truncated,
+		"stale_run_count": len(full_groups["stale_runs"]),
+		"boundary_warning_count": len(full_groups["boundary_warnings"]),
+		"failing_check_count": len(full_groups["failing_checks"]),
+		"rollback_candidate_count": 0,
+		"rollback_candidates_overlap_risks": False,
+		"truncated": matched_risk_count > returned_risk_count,
+		"source_warning_count": warning_count,
+		"source_surfaces": SOURCE_SURFACES,
+	}
+	if ledger_summary is not None:
+		summary["ledger"] = ledger_summary
 	return {
 		"ok": True,
 		"schema_version": SCHEMA_VERSION,
-		"generated_at": now_utc_iso(),
-		"request": _request(normalized_time_range),
-		"summary": {
-			"source_health_ok": status_payload.get("ok") is True,
-			"matched_risk_count": matched_risk_count,
-			"matched_occurrence_count": sum(
-				_positive_occurrence_count(risk.get("occurrence_count"))
-				for risk in aggregated
-			),
-			"returned_risk_count": returned_risk_count,
-			"source_scan_limit": scan_limit,
-			"source_rows_truncated": source_rows_truncated,
-			"stale_run_count": len(full_groups["stale_runs"]),
-			"boundary_warning_count": len(full_groups["boundary_warnings"]),
-			"failing_check_count": len(full_groups["failing_checks"]),
-			"rollback_candidate_count": 0,
-			"rollback_candidates_overlap_risks": False,
-			"truncated": matched_risk_count > returned_risk_count,
-			"source_warning_count": warning_count,
-			"source_surfaces": SOURCE_SURFACES,
-		},
+		"generated_at": generated_at,
+		"request": request,
+		"summary": summary,
 		"groups": retained_groups,
-		"risks": retained,
+		"risks": retained_public,
 		"source_warnings": warnings[:SOURCE_WARNING_LIMIT],
 		"source_warnings_truncated": warning_count > SOURCE_WARNING_LIMIT,
 		"omissions": [dict(_ROLLBACK_OMISSION)],
@@ -880,6 +1121,21 @@ def _render_risk_line(risk: dict[str, Any]) -> str:
 	next_safe_action = _redact_text(risk.get("next_safe_action"))
 	if next_safe_action:
 		line += f" Next: {next_safe_action}"
+	ledger = risk.get("ledger")
+	if isinstance(ledger, dict):
+		line += (
+			f" | ledger status=`{_redact_text(ledger.get('status'), limit=40)}`"
+			f" total=`{_redact_text(ledger.get('occurrence_count'), limit=20)}`"
+			f" scans=`{_redact_text(ledger.get('scan_count'), limit=20)}`"
+			f" first=`{_redact_text(ledger.get('first_seen_at'), limit=40)}`"
+			f" last=`{_redact_text(ledger.get('last_seen_at'), limit=40)}`"
+		)
+		assignee = _redact_text(ledger.get("assignee"), limit=120)
+		if assignee:
+			line += f" assignee=`{assignee}`"
+		suppress_until = _redact_text(ledger.get("suppress_until"), limit=40)
+		if suppress_until:
+			line += f" suppressed_until=`{suppress_until}`"
 	return line
 
 

@@ -98,6 +98,7 @@ from .cli_commands import (
     handle_ready_score_command,
     handle_review_batch_command,
     handle_registry_admin_command,
+    handle_risk_ledger_command,
     handle_slash_commands_command,
     handle_starter_command,
     handle_summary_all_command,
@@ -138,6 +139,7 @@ from .cli_commands import (
     register_ready_score_command,
     register_review_batch_commands,
     register_registry_admin_commands,
+    register_risk_ledger_commands,
     register_slash_commands_command,
     register_starter_commands,
     register_status_commands,
@@ -291,6 +293,8 @@ def build_parser() -> LoopXArgumentParser:
     register_agent_turn_recall_commands(sub, add_subcommand_format)
 
     register_review_batch_commands(sub, add_subcommand_format)
+
+    register_risk_ledger_commands(sub, add_subcommand_format)
 
     register_periodic_report_commands(
         sub,
@@ -790,6 +794,15 @@ def main(argv: list[str] | None = None) -> int:
     )
     if summary_all_result is not None:
         return summary_all_result
+
+    risk_ledger_result = handle_risk_ledger_command(
+        args,
+        registry_path=registry_path,
+        output_format=output_format,
+        print_payload=print_payload,
+    )
+    if risk_ledger_result is not None:
+        return risk_ledger_result
 
     pr_review_result = handle_pr_review_command(
         args,

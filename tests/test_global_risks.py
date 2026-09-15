@@ -11,6 +11,7 @@ import pytest
 
 import loopx.cli_commands.summary_all as manager_cli
 import loopx.global_risks as global_risks
+import loopx.risk_ledger as risk_ledger
 from loopx.cli import build_parser
 
 
@@ -1130,3 +1131,324 @@ def test_terminal_host_poll_receipt_never_surfaces(
 	assert all(
 		row.get("kind") != "stale_host_poll" for row in payload["risks"]
 	)
+
+
+# --- persistent risk ledger integration ----------------------------------
+
+
+def ledger_path(tmp_path: Path) -> Path:
+	return risk_ledger.risk_ledger_path_for_registry(tmp_path / "registry.json")
+
+
+def build_ledger_payload(
+	tmp_path: Path,
+	payload: object,
+	monkeypatch: pytest.MonkeyPatch,
+	*,
+	scan_id: str,
+	now_time: str,
+	limit: int = 8,
+	status_filter: list[str] | None = None,
+	severity_filter: list[str] | None = None,
+	assignee_filter: str | None = None,
+) -> dict[str, object]:
+	patch_status(monkeypatch, payload)
+	monkeypatch.setattr(global_risks, "now_utc_iso", lambda: now_time)
+	return global_risks.build_global_risks(
+		registry_path=tmp_path / "registry.json",
+		runtime_root_override=None,
+		scan_roots=[],
+		agent_id=None,
+		time_range="24h",
+		limit=limit,
+		scan_id=scan_id,
+		status_filter=status_filter,
+		severity_filter=severity_filter,
+		assignee_filter=assignee_filter,
+	)
+
+
+def test_scan_without_ledger_writes_nothing_and_emits_no_ledger_fields(
+	monkeypatch, tmp_path
+) -> None:
+	patch_status(
+		monkeypatch,
+		status_payload(diagnostics=[contract_diagnostic("public_boundary_violation")]),
+	)
+	payload = build_payload(tmp_path)
+
+	assert payload["ok"] is True
+	assert "ledger" not in payload["summary"]
+	assert "ledger_filters" not in payload["request"]
+	for row in payload["risks"]:
+		assert "ledger" not in row
+		assert "risk_id" not in row
+		assert "source_surface" not in row
+	assert not ledger_path(tmp_path).exists()
+	assert list(tmp_path.iterdir()) == []
+
+
+def test_ledger_dedupes_position_shifted_findings_across_scans(
+	monkeypatch, tmp_path
+) -> None:
+	risk_ledger.initialize_ledger_file(ledger_path(tmp_path))
+	first = contract_diagnostic("public_boundary_violation")
+	second = contract_diagnostic("registry_boundary_risk")
+
+	payload_one = build_ledger_payload(
+		tmp_path,
+		status_payload(diagnostics=[first, second]),
+		monkeypatch,
+		scan_id="scan-1",
+		now_time=FROZEN_TIME,
+	)
+	# Source order reverses on the next scan; source-list positions shift.
+	payload_two = build_ledger_payload(
+		tmp_path,
+		status_payload(diagnostics=[second, first]),
+		monkeypatch,
+		scan_id="scan-2",
+		now_time="2026-08-12T12:00:00Z",
+	)
+
+	assert payload_one["summary"]["ledger"]["record_count"] == 2
+	by_risk = {row["kind"]: row for row in payload_two["risks"]}
+	annotation = by_risk["public_boundary_violation"]["ledger"]
+	assert annotation["status"] == "open"
+	assert annotation["scan_count"] == 2
+	assert annotation["occurrence_count"] == 2
+	assert annotation["first_seen_at"] == FROZEN_TIME
+	assert annotation["last_seen_at"] == "2026-08-12T12:00:00Z"
+	assert re.fullmatch(r"[0-9a-f]{16}", str(annotation["risk_id"]))
+	# Repeated scans annotate the same stable identity despite position drift.
+	first_id = by_risk["public_boundary_violation"]["ledger"]["risk_id"]
+	assert (
+		payload_one["risks"][0]["ledger"]["risk_id"]
+		!= payload_one["risks"][0]["occurrence_id"]
+	)
+	assert first_id in {row["ledger"]["risk_id"] for row in payload_one["risks"]}
+
+
+def test_ledger_filters_narrow_rows_and_summary(monkeypatch, tmp_path) -> None:
+	path = ledger_path(tmp_path)
+	risk_ledger.initialize_ledger_file(path)
+	build_ledger_payload(
+		tmp_path,
+		status_payload(
+			diagnostics=[
+				contract_diagnostic("public_boundary_violation", severity="error"),
+				contract_diagnostic(
+					"registry_goal_missing_domain",
+					scope="goals",
+					goal_id="goal-1",
+					severity="warning",
+				),
+			]
+		),
+		monkeypatch,
+		scan_id="scan-1",
+		now_time=FROZEN_TIME,
+	)
+	goal_scoped_id = risk_ledger.stable_risk_id(
+		source_surface="status.contract.error_diagnostics",
+		kind="registry_goal_missing_domain",
+		scope="goals",
+		goal_id="goal-1",
+	)
+	risk_ledger.apply_lifecycle_file(
+		path, goal_scoped_id, "assigned", agent="agent-a", now=FROZEN_TIME
+	)
+
+	open_only = build_ledger_payload(
+		tmp_path,
+		status_payload(
+			diagnostics=[
+				contract_diagnostic("public_boundary_violation", severity="error"),
+				contract_diagnostic(
+					"registry_goal_missing_domain",
+					scope="goals",
+					goal_id="goal-1",
+					severity="warning",
+				),
+			]
+		),
+		monkeypatch,
+		scan_id="scan-2",
+		now_time=FROZEN_TIME,
+		status_filter=["open"],
+	)
+	assert [row["kind"] for row in open_only["risks"]] == [
+		"public_boundary_violation"
+	]
+	assert open_only["summary"]["matched_risk_count"] == 1
+	assert open_only["request"]["ledger_filters"]["status"] == ["open"]
+
+	observed = status_payload(
+		diagnostics=[
+			contract_diagnostic("public_boundary_violation", severity="error"),
+			contract_diagnostic(
+				"registry_goal_missing_domain",
+				scope="goals",
+				goal_id="goal-1",
+				severity="warning",
+			),
+		]
+	)
+	assigned = build_ledger_payload(
+		tmp_path,
+		observed,
+		monkeypatch,
+		scan_id="scan-3",
+		now_time=FROZEN_TIME,
+		assignee_filter="agent-a",
+	)
+	assert [row["kind"] for row in assigned["risks"]] == [
+		"registry_goal_missing_domain"
+	]
+	assert assigned["risks"][0]["ledger"]["assignee"] == "agent-a"
+
+	unassigned = build_ledger_payload(
+		tmp_path,
+		observed,
+		monkeypatch,
+		scan_id="scan-4",
+		now_time=FROZEN_TIME,
+		assignee_filter="unassigned",
+		status_filter=["open"],
+	)
+	assert [row["kind"] for row in unassigned["risks"]] == [
+		"public_boundary_violation"
+	]
+
+
+def test_ledger_filter_applies_before_limit(monkeypatch, tmp_path) -> None:
+	path = ledger_path(tmp_path)
+	risk_ledger.initialize_ledger_file(path)
+	diagnostics = [
+		contract_diagnostic("public_boundary_violation", severity="error"),
+		contract_diagnostic("registry_boundary_risk", severity="error"),
+	]
+	build_ledger_payload(
+		tmp_path,
+		status_payload(diagnostics=diagnostics),
+		monkeypatch,
+		scan_id="scan-1",
+		now_time=FROZEN_TIME,
+	)
+	for record in risk_ledger.load_ledger(path)["records"].values():
+		if record["kind"] == "public_boundary_violation":
+			# Same-severity recurrence during suppression stays suppressed.
+			risk_ledger.apply_lifecycle_file(
+				path, record["risk_id"], "suppressed", now=FROZEN_TIME, until="7d"
+			)
+	payload = build_ledger_payload(
+		tmp_path,
+		status_payload(diagnostics=diagnostics),
+		monkeypatch,
+		scan_id="scan-2",
+		now_time=FROZEN_TIME,
+		limit=1,
+		status_filter=["open"],
+	)
+	# The suppressed row is filtered out before the limit, so the open row is
+	# returned rather than crowded out.
+	assert [row["kind"] for row in payload["risks"]] == ["registry_boundary_risk"]
+	assert payload["summary"]["returned_risk_count"] == 1
+
+
+def test_corrupt_ledger_warns_but_keeps_projection_and_file(
+	monkeypatch, tmp_path
+) -> None:
+	path = ledger_path(tmp_path)
+	path.write_text("{broken", encoding="utf-8")
+	before = path.read_bytes()
+	patch_status(
+		monkeypatch,
+		status_payload(diagnostics=[contract_diagnostic("public_boundary_violation")]),
+	)
+	payload = build_payload(tmp_path)
+
+	assert payload["ok"] is True
+	assert "ledger" not in payload["summary"]
+	codes = {warning["reason_code"] for warning in payload["source_warnings"]}
+	assert "risk_ledger_unreadable" in codes
+	for row in payload["risks"]:
+		assert "ledger" not in row
+	assert path.read_bytes() == before
+
+
+def test_corrupt_ledger_with_filters_fails_closed(monkeypatch, tmp_path) -> None:
+	path = ledger_path(tmp_path)
+	path.write_text("{broken", encoding="utf-8")
+	patch_status(
+		monkeypatch,
+		status_payload(diagnostics=[contract_diagnostic("public_boundary_violation")]),
+	)
+	payload = global_risks.build_global_risks(
+		registry_path=tmp_path / "registry.json",
+		runtime_root_override=None,
+		scan_roots=[],
+		agent_id=None,
+		time_range="24h",
+		limit=8,
+		status_filter=["open"],
+	)
+	assert payload["ok"] is False
+	assert payload["error_code"] == "risk_ledger_unreadable"
+	assert path.read_text(encoding="utf-8") == "{broken"
+
+
+def test_ledger_filters_without_ledger_fail_closed(monkeypatch, tmp_path) -> None:
+	patch_status(monkeypatch, status_payload())
+	payload = global_risks.build_global_risks(
+		registry_path=tmp_path / "registry.json",
+		runtime_root_override=None,
+		scan_roots=[],
+		agent_id=None,
+		time_range="24h",
+		limit=8,
+		status_filter=["open"],
+	)
+	assert payload["ok"] is False
+	assert payload["error_code"] == "risk_ledger_not_initialized"
+	assert not ledger_path(tmp_path).exists()
+
+
+@pytest.mark.parametrize(
+	("kwargs", "expected_code"),
+	[
+		({"status_filter": ["bogus"]}, "invalid_risk_filter"),
+		({"severity_filter": ["critical"]}, "invalid_risk_filter"),
+		({"assignee_filter": "Bad Token!!"}, "invalid_risk_filter"),
+	],
+)
+def test_invalid_ledger_filter_values_fail_closed(
+	monkeypatch, tmp_path, kwargs, expected_code
+) -> None:
+	risk_ledger.initialize_ledger_file(ledger_path(tmp_path))
+	patch_status(monkeypatch, status_payload())
+	payload = global_risks.build_global_risks(
+		registry_path=tmp_path / "registry.json",
+		runtime_root_override=None,
+		scan_roots=[],
+		agent_id=None,
+		time_range="24h",
+		limit=8,
+		**kwargs,
+	)
+	assert payload["ok"] is False
+	assert payload["error_code"] == expected_code
+
+
+def test_markdown_renders_ledger_annotation(monkeypatch, tmp_path) -> None:
+	risk_ledger.initialize_ledger_file(ledger_path(tmp_path))
+	payload = build_ledger_payload(
+		tmp_path,
+		status_payload(diagnostics=[contract_diagnostic("public_boundary_violation")]),
+		monkeypatch,
+		scan_id="scan-1",
+		now_time=FROZEN_TIME,
+	)
+	markdown = global_risks.render_global_risks_markdown(payload)
+	assert "ledger status=`open`" in markdown
+	assert f"first=`{FROZEN_TIME}`" in markdown
