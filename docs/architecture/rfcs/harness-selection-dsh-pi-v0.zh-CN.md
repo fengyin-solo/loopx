@@ -13,10 +13,11 @@ Pi 保留为 managed runtime 候选。前者利用已存在的被动 observer �
 本评估不提供缺乏测量依据的评分或性能排名。
 
 本文区分 DSH 的两个角色，二者不可混同：**托管有界 Turn 宿主**（LoopX 为一次受治理
-Turn 选择的适配器）现已按凭据绑定并交付（见下文）；**L1 事件源与会话归属 runtime**
-角色仍是 opt-in，不因前者被晋级，仍需本文 C0、C1、开销、保留与 Mode B 各行。
+Turn 选择的适配器）已按凭据绑定，其默认宿主解析随下文记录的托管栈落地，而不是今天
+的 `main`；**L1 事件源与会话归属 runtime** 角色仍是 opt-in，不因前者被晋级，仍需
+本文 C0、C1、开销、保留与 Mode B 各行。
 
-## 已交付的托管执行面（2026-09-15）
+## 托管执行面（2026-09-15）
 
 选型受仓库今天实际交付的能力约束，而不只取决于上游 harness 能做什么。托管的单次执行
 单元是有界 Turn：
@@ -31,9 +32,22 @@ Turn 选择的适配器）现已按凭据绑定并交付（见下文）；**L1 �
   [Agent 会话执行模式](./agent-session-execution-modes-v0.zh-CN.md)，该文档同时拥有
   M1-M4 接入里程碑与跨前端投影行。
 
+下文区分三种证据状态，不可互相套用；该列表以 2026-09-15 为准，并计划与托管栈一起
+落地：
+
+- **2026-09-15 已在 `main` 上**：`loopx turn run-once --host
+  codex-cli|dsh|generic-cli`、`dsh` 宿主适配器、上面的 `host-mode-plan` 门槛，以及
+  `main` 固定的 `deepseek-harness-sdk==0.1.2a3`；
+- **2026-09-15 尚未进入 `main`、计划随本文落地**：按凭据解析的默认宿主
+  （`loopx/control_plane/turn_driver/host_binding.py`，PR #4409）与 `0.1.5rc1` 的 dsh
+  固定版本（PR #4420）。后续读者若看到这两个 PR 已合并，可把这两行读作已交付；
+  否则只能按栈内状态理解；
+- **本地真实验证，不是仓库门禁**：下文标注为本地证据的行。它们需要 operator 凭据
+  才能复现，CI 不做断言。
+
 | 角色 | 来源 | 当前选型 | 晋级门槛 |
 | --- | --- | --- | --- |
-| 默认托管执行宿主 | LoopX Turn 加 `dsh` 宿主适配器，并绑定到运维方提供的模型端点 | 运维方配置了模型凭据时，托管有界 Turn 的已交付默认值；未配置时默认 `codex-cli` | 保持类型化 host request/result、独立验证与凭据归属运维方的边界；没有同等或更强的契约不替换 |
+| 默认托管执行宿主 | LoopX Turn 加 `dsh` 宿主适配器，并绑定到运维方提供的模型端点 | 托管栈中，运维方配置了模型凭据时托管有界 Turn 的默认值；未配置时默认 `codex-cli`；今天的 `main` 在 PR #4409 落地前仍保持 `codex-cli` | 保持类型化 host request/result、独立验证与凭据归属运维方的边界；没有同等或更强的契约不替换 |
 | 受支持的替代 Turn 宿主 | LoopX Turn 加 `codex-cli` 适配器 | 受支持，但同样必须绑定运维方提供的 provider | 任何托管通道都不得依赖某个人的 CLI 订阅 |
 | L1 事件源与会话归属 runtime 候选 | DSH | opt-in，未晋级；有界 Turn 宿主角色见上一行默认值 | 本文 C0、C1、开销、保留与 Mode B 各行被真实执行并通过评审 |
 | 可选的可见宿主循环 | Pi | 不是 managed runtime | 先声明按绑定持久化且可回读的会话模式，证明重启下的单执行器行为、"对话不是回执"、宿主本地状态非权威，并提供一条真实宿主重启行 |
@@ -52,16 +66,17 @@ LoopX 用该凭据解析托管有界 Turn 的默认宿主
 订阅是否可用、是否还有额度或是否已登录；仍然跑在 `codex-cli` 的通道则尚未满足
 上表中"绑定运维方提供的 provider"这一门槛。
 
-该绑定已验证：
+该绑定的证据按来源区分：
 
-- 默认值解析本身不需要任何 provider 调用即可验证：配置凭据时选中 `dsh`，
-  空值或仅空白的值保持 `codex-cli`，显式 `--host` 仍然优先（PR #4409）；
-- 两条 Turn 宿主路径都在真实 SDK 与 runtime（`deepseek-harness-sdk==0.1.5rc1`，
-  当前发布通道的固定版本；同一对路径在 `0.1.2a3` 下也通过）下通过：进程内
-  `--host dsh` 路径与 `generic-cli` 子进程路径；
-- 一次真实托管 Turn 达到 `validated_progress`：宿主执行有界动作，独立 validator
-  证明后置条件，随后才发生写回与配额扣减；
-- 一次后置条件未被证明的真实 Turn 反向失败关闭：没有写回，配额槽消耗计数保持为 0。
+- 仓库覆盖、无需任何 provider 调用：配置凭据时选中 `dsh`，空值或仅空白的值保持
+  `codex-cli`，显式 `--host` 仍然优先（PR #4409 的测试，尚未进入 `main`）；
+- 本地真实验证：在真实 SDK 与 runtime（`deepseek-harness-sdk==0.1.5rc1`，即 PR
+  #4420 提出的固定版本；`main` 今天仍固定在 `0.1.2a3`，同一对路径在那里也通过）下，
+  进程内 `--host dsh` 路径与 `generic-cli` 子进程路径均通过；
+- 本地真实验证：一次托管 Turn 达到 `validated_progress`，宿主执行有界动作，独立
+  validator 证明后置条件，随后才发生写回与配额扣减；
+- 本地真实验证：一次后置条件未被证明的 Turn 反向失败关闭，没有写回，配额槽消耗计数
+  保持为 0。
 
 在该绑定成为正式默认值之前仍存在的缺口：
 
@@ -97,10 +112,12 @@ LoopX 检查基线为 `bf217e1e01bec79f357c9ecbd580cf2dfa73db8b`：
 - `apps/desktop/loopx-control-plane/src-tauri/src/services.rs`：已有服务进程管理不等于
   RFC 所要求的完整 managed Agent 生命周期。
 
-LoopX 自身的 dsh 固定版本跟随最新发布通道，而不是未发布的 tag：PyPI 上的
-`deepseek-harness-sdk==0.1.5rc1` / `deepseek-harness-runtime-bin==0.1.5rc1`，与 npm
-`@deepseek-ai/dsh` 的 `latest` 一致（2026-09-15 核对）。上游 `next` 与 `alpha` tag
-比该通道更新，这里不采纳。
+dsh 固定版本经历了两步，理解本文需要同时知道这两个状态：今天的 `main` 固定
+`deepseek-harness-sdk==0.1.2a3`；托管栈把该固定版本升到最新发布通道，而不是未发布的
+tag：PyPI 上的 `deepseek-harness-sdk==0.1.5rc1` /
+`deepseek-harness-runtime-bin==0.1.5rc1`（PR #4420），与 npm `@deepseek-ai/dsh` 的
+`latest` 一致（2026-09-15 核对）。上游 `next` 与 `alpha` tag 比该通道更新，这里不
+采纳。
 
 2026-09-06 独立检查的上游版本，不等同于 LoopX 已验证的安装版本：
 
@@ -218,9 +235,9 @@ L1 observer 这条臂的 C0、C1、开销与保留证据，以及上面针对会
 管家通道还需要一个能持有交互会话的传输，而现有 DSH 面明确不承诺跨 turn 的 DSH
 会话连续性。
 
-已实现的行为：配置了 operator 凭据时，管家通道把默认模型绑到 operator provider
-（`deepseek-flash`，来源 `operator_credential_default`），执行器也从同一凭据解析；
-当解析出的托管宿主没有 chat 传输时，解析结果给出 typed
+托管栈中的行为（PR #4417，尚未进入 `main`）：配置了 operator 凭据时，管家通道把默认
+模型绑到 operator provider（`deepseek-flash`，来源 `operator_credential_default`），
+执行器也从同一凭据解析；当解析出的托管宿主没有 chat 传输时，解析结果给出 typed
 `dsh_chat_transport_unsupported`，而针对该宿主的会话请求以 typed
 `managed_host_chat_transport_unsupported` host-tool gate 失败，不会静默回落到个人
 CLI 登录。

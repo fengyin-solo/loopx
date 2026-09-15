@@ -15,11 +15,12 @@ that a plugin event fixture cannot supply. No quantitative winner is claimed.
 
 Two DSH roles appear in this document and must not be conflated. The **bounded
 managed Turn host** (LoopX's adapter choice for one governed Turn) is
-credential-bound and shipped, as recorded below. The **L1 event source and
-session-owning runtime** role stays opt-in and is not promoted by that binding;
-it still needs the C0, C1, overhead, retention and Mode B rows.
+credential-bound; its default-host resolution lands with the managed stack
+recorded below, not with `main` today. The **L1 event source and session-owning
+runtime** role stays opt-in and is not promoted by that binding; it still needs
+the C0, C1, overhead, retention and Mode B rows.
 
-## Shipped Managed Execution Surface (2026-09-15)
+## Managed Execution Surface (2026-09-15)
 
 Selection is constrained by what the repository ships today, not only by what an
 upstream harness can do. The managed bounded execution unit is the governed Turn:
@@ -37,9 +38,25 @@ upstream harness can do. The managed bounded execution unit is the governed Turn
   [Agent Session Execution Modes](./agent-session-execution-modes-v0.md), which
   also owns the M1-M4 integration milestones and the cross-frontend projection row.
 
+Three evidence states appear below and must not be read across them. The list is
+dated 2026-09-15 and is written to land with the managed stack:
+
+- **already on `main` on 2026-09-15:** `loopx turn run-once --host
+  codex-cli|dsh|generic-cli`, the `dsh` host adapter, the `host-mode-plan` gate
+  above, and the dsh pin `deepseek-harness-sdk==0.1.2a3`;
+- **not on `main` on 2026-09-15; expected to land with this document:** the
+  credential-resolved default host
+  (`loopx/control_plane/turn_driver/host_binding.py`, PR #4409) and the
+  `0.1.5rc1` dsh pin (PR #4420). A later reader who finds both PRs merged can
+  read those two rows as shipped; a reader who does not must treat them as
+  stack-only;
+- **local live qualification, not a repository gate:** rows marked as local
+  evidence below. Reproducing them needs an operator credential, and CI asserts
+  none of them.
+
 | Role | Source | Selection today | Promotion gate |
 | --- | --- | --- | --- |
-| Default managed execution host | LoopX Turn plus the `dsh` host adapter, bound to an operator-supplied model endpoint | shipped default for bounded managed Turns once the operator configured a model credential, otherwise `codex-cli` | keep the typed host request/result, independent validation, and the operator-owned credential boundary; do not replace it without an equal or stronger contract |
+| Default managed execution host | LoopX Turn plus the `dsh` host adapter, bound to an operator-supplied model endpoint | default for bounded managed Turns in the managed stack once the operator configured a model credential, otherwise `codex-cli`; `main` today keeps `codex-cli` until PR #4409 lands | keep the typed host request/result, independent validation, and the operator-owned credential boundary; do not replace it without an equal or stronger contract |
 | Supported alternative Turn host | LoopX Turn plus the `codex-cli` adapter | supported, and must also be bound to an operator-supplied provider | no managed lane may depend on an individual's personal CLI subscription |
 | L1 event source and session-owning runtime candidate | DSH | opt-in, not promoted; the bounded Turn host role is the default row above | the C0, C1, overhead, retention and Mode B rows in this document being run and reviewed |
 | Optional visible host loop | Pi | not a managed runtime | declare a per-binding session mode with readback, prove single-executor behavior under restart, "conversation is not a receipt", non-authoritative host-local state, and one real-host restart row |
@@ -60,20 +77,21 @@ resolves to the DSH host therefore never depends on an individual developer's CL
 subscription being available, funded, or logged in, and a lane that still runs on
 `codex-cli` has not yet met the operator-provider part of the binding gate above.
 
-Verified for this binding:
+Evidence for this binding, separated by source:
 
-- the resolved default is covered without any provider call: a configured
-  credential selects `dsh`, an empty or whitespace-only value keeps `codex-cli`,
-  and an explicit `--host` still wins (PR #4409);
-- both Turn host paths pass with the real SDK and runtime
-  (`deepseek-harness-sdk==0.1.5rc1`, the current released pin; the same pair
-  also passed at `0.1.2a3`): the in-process `--host dsh` path and the
-  `generic-cli` subprocess path;
-- one live governed Turn reached `validated_progress`: the host executed the
-  bounded action, an independent validator proved the postcondition, and only
-  then did writeback and quota spend follow;
-- a live Turn whose postcondition was not proved fail-closed instead: no
-  writeback, and the quota slot spend count stayed at zero.
+- repository-covered without any provider call: a configured credential selects
+  `dsh`, an empty or whitespace-only value keeps `codex-cli`, and an explicit
+  `--host` still wins (tests in PR #4409, not yet on `main`);
+- local live qualification with the real SDK and runtime
+  (`deepseek-harness-sdk==0.1.5rc1`, the pin PR #4420 proposes; `main` still
+  pins `0.1.2a3` and the same pair also passed there): the in-process
+  `--host dsh` path and the `generic-cli` subprocess path;
+- local live qualification: one governed Turn reached `validated_progress` — the
+  host executed the bounded action, an independent validator proved the
+  postcondition, and only then did writeback and quota spend follow;
+- local live qualification: a Turn whose postcondition was not proved
+  fail-closed instead — no writeback, and the quota slot spend count stayed at
+  zero.
 
 Open gaps before this binding is a promoted production default:
 
@@ -115,11 +133,13 @@ The implementation paths below are repository-relative:
 - `apps/desktop/loopx-control-plane/src-tauri/src/services.rs`: service process
   management must not be mistaken for the complete managed Agent lifecycle.
 
-LoopX's own dsh pin tracks the newest released upstream channel rather than an
-unreleased tag: `deepseek-harness-sdk==0.1.5rc1` /
-`deepseek-harness-runtime-bin==0.1.5rc1` on PyPI, matching `latest` for
-`@deepseek-ai/dsh` on npm (checked 2026-09-15). Upstream `next` and `alpha` tags
-are newer than that channel and are not adopted here.
+The dsh pin moved in two steps, and reading this document needs both states.
+`main` today pins `deepseek-harness-sdk==0.1.2a3`. The managed stack moves that
+pin to the newest released upstream channel rather than an unreleased tag:
+`deepseek-harness-sdk==0.1.5rc1` / `deepseek-harness-runtime-bin==0.1.5rc1` on
+PyPI (PR #4420), matching `latest` for `@deepseek-ai/dsh` on npm (checked
+2026-09-15). Upstream `next` and `alpha` tags are newer than that channel and are
+not adopted here.
 
 Upstream references were inspected on 2026-09-06, pinned independently of the
 versions validated by LoopX:
@@ -262,13 +282,14 @@ serves today. The steward channel additionally needs a transport that can hold
 an interactive session, and the shipped DSH surface explicitly does not promise
 cross-turn DSH session continuity.
 
-Shipped behaviour: with an operator credential configured, the steward channel
-defaults its model to the operator provider (`deepseek-flash`, source
-`operator_credential_default`) and resolves its executor from the same
-credential. When the resolved managed host has no chat transport, resolution
-reports the typed `dsh_chat_transport_unsupported` reason and a session request
-for that host fails as the typed `managed_host_chat_transport_unsupported`
-host-tool gate instead of silently falling back to an individual CLI login.
+Behaviour in the managed stack (PR #4417, not yet on `main`): with an operator
+credential configured, the steward channel defaults its model to the operator
+provider (`deepseek-flash`, source `operator_credential_default`) and resolves
+its executor from the same credential. When the resolved managed host has no
+chat transport, resolution reports the typed `dsh_chat_transport_unsupported`
+reason and a session request for that host fails as the typed
+`managed_host_chat_transport_unsupported` host-tool gate instead of silently
+falling back to an individual CLI login.
 
 | Option | Shape | Cost and risk |
 | --- | --- | --- |
