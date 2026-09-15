@@ -281,6 +281,10 @@ COMMAND_GROUPS: list[dict[str, object]] = [
                 "purpose": "Compose provider-neutral bounded review packets and bind exact decisions.",
             },
             {
+                "command": "loopx risk-ledger",
+                "purpose": "Maintain the persistent global risk ledger: init, acknowledge, assign, resolve, suppress, and show records.",
+            },
+            {
                 "command": "loopx periodic-report",
                 "purpose": "Resolve a portable weekly profile, evaluate report triggers, and compose provider-neutral run receipts.",
             },
@@ -341,6 +345,7 @@ MANPAGE_COMMAND_HELP_ONLY = frozenset(
         "global-risks",
         "global-summary",
         "global-todos",
+        "goal-actions",
         "goal-alignment",
         "amendment-proposal",
         "goal-amendment-proposal",

@@ -83,10 +83,13 @@ than one LoopX project or agent lane:
 | See only user or owner gates. | `/loopx-global-gates` |
 | See runnable project-agent work. | `/loopx-global-todos` |
 | See risks and blocked lanes. | `/loopx-global-risks` |
+| Track one risk across scans, assign it, suppress it for a while, or mark it handled. | `loopx risk-ledger init`, then `loopx risk-ledger show/ack/assign/suppress/resolve`; filter `loopx global-risks` with `--status`, `--severity`, or `--assignee`. |
 
 These are manager views. They should summarize and route work across projects;
 they should not replace the project-local LoopX task entry as the way to start
-useful work inside one repository.
+useful work inside one repository. The risk ledger is opt-in maintenance:
+before `risk-ledger init`, `/loopx-global-risks` stays an ephemeral read-only
+projection and writes nothing.
 
 ## When To Use More Commands
 

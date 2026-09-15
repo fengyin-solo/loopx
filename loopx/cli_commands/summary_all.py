@@ -154,6 +154,31 @@ def register_summary_all_command(
             "current risks remain visible."
         ),
     )
+    risks_parser.add_argument(
+        "--status",
+        action="append",
+        dest="risk_status",
+        choices=("open", "acknowledged", "assigned", "resolved", "suppressed"),
+        help=(
+            "Ledger lifecycle status to include; repeatable. Requires a ledger "
+            "created with `loopx risk-ledger init`."
+        ),
+    )
+    risks_parser.add_argument(
+        "--severity",
+        action="append",
+        dest="risk_severity",
+        choices=("high", "action", "warning", "info"),
+        help="Ledger risk severity to include; repeatable.",
+    )
+    risks_parser.add_argument(
+        "--assignee",
+        dest="risk_assignee",
+        help=(
+            "Show only risks carried by this registered agent, or `unassigned`; "
+            "requires a ledger created with `loopx risk-ledger init`."
+        ),
+    )
 
 
 def handle_summary_all_command(
@@ -199,6 +224,13 @@ def handle_summary_all_command(
         print_payload(payload, output_format(args), render_goal_portfolio)
         return 0 if payload.get("ok") else 1
     if args.command == "global-risks":
+        ledger_filter_kwargs: dict[str, object] = {}
+        if getattr(args, "risk_status", None):
+            ledger_filter_kwargs["status_filter"] = args.risk_status
+        if getattr(args, "risk_severity", None):
+            ledger_filter_kwargs["severity_filter"] = args.risk_severity
+        if getattr(args, "risk_assignee", None):
+            ledger_filter_kwargs["assignee_filter"] = args.risk_assignee
         try:
             payload = build_global_risks(
                 registry_path=registry_path,
@@ -207,6 +239,7 @@ def handle_summary_all_command(
                 agent_id=args.agent_id,
                 time_range=args.time_range,
                 limit=max(1, args.limit),
+                **ledger_filter_kwargs,
             )
         except Exception as exc:
             payload = build_global_risks_error(exc, time_range=args.time_range)
