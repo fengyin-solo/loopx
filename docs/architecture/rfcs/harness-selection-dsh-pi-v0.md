@@ -235,6 +235,13 @@ Keep raw logs and credentials owner-local. Public evidence should contain only
 generalized methodology, pinned revisions, aggregate results and safe references.
 No live model execution or retention deletion is authorized by this document.
 
+Milestone ownership stays with
+[Agent Session Execution Modes](./agent-session-execution-modes-v0.md). This
+document owns the C0, C1, overhead and retention evidence for the L1 observer
+arm, and the Mode B acceptance above for a session-owning runtime; the M1-M4
+integration milestones and the cross-frontend projection row remain that
+document's, and nothing here defines mode inference or a second executor.
+
 ## Delivery Sequence
 
 This comparison plus combined CLI readback can be reviewed now. A Mode B panel
