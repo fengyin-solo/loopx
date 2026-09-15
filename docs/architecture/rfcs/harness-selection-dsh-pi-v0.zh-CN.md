@@ -52,18 +52,22 @@ LoopX 用该凭据解析托管有界 Turn 的默认宿主
 
 - 默认值解析本身不需要任何 provider 调用即可验证：配置凭据时选中 `dsh`，
   空值或仅空白的值保持 `codex-cli`，显式 `--host` 仍然优先（PR #4409）；
-- 两条 Turn 宿主路径都在真实 SDK 与 runtime（`deepseek-harness-sdk==0.1.2a3`）
-  下通过：进程内 `--host dsh` 路径与 `generic-cli` 子进程路径；
+- 两条 Turn 宿主路径都在真实 SDK 与 runtime（`deepseek-harness-sdk==0.1.5rc1`，
+  当前发布通道的固定版本；同一对路径在 `0.1.2a3` 下也通过）下通过：进程内
+  `--host dsh` 路径与 `generic-cli` 子进程路径；
 - 一次真实托管 Turn 达到 `validated_progress`：宿主执行有界动作，独立 validator
   证明后置条件，随后才发生写回与配额扣减；
 - 一次后置条件未被证明的真实 Turn 反向失败关闭：没有写回，配额槽消耗计数保持为 0。
 
 在该绑定成为正式默认值之前仍存在的缺口：
 
-- `deepseek-harness-runtime-bin==0.1.2a3` 捆绑的 runtime 快照无法按原样启动
-  `headless` profile：其中一行 import 了 `@deepseek-ai/dsh-session-title-llm`，
-  而该 vendored 包集合未包含它；把该包装进 profile 目录也不会改变快照内部的解析。
-  当前本地做法是用一条绑定 overlay 关闭受影响的行；
+- `deepseek-harness-runtime-bin==0.1.5rc1` 捆绑的 runtime 快照无法按原样启动
+  `headless` profile：其中一行会拉起
+  `@deepseek-ai/dsh-session-title-first-prompt-llm`，该包 import 了未被收录的
+  `@deepseek-ai/dsh-session-title-llm`；解析发生在打包快照内部，因此把该包装进
+  profile 目录不会改变结果。当前本地做法是用一条绑定 overlay 关闭受影响的行。
+  托管宿主路径不受影响：它不选择 `headless` profile，默认 `sdk` profile 能正常
+  启动并干净退出；
 - LoopX 的 DSH Turn 组合必须显式列出托管动作所需的工具行
   （`@deepseek-ai/dsh-tool-fs`、`@deepseek-ai/dsh-tool-bash`）。缺少它们时，真实模型
   只能作答而无法动手，Turn 会以验证失败而不是产出工作结束。
@@ -82,6 +86,11 @@ LoopX 检查基线为 `bf217e1e01bec79f357c9ecbd580cf2dfa73db8b`：
   行为的可见宿主集成，不是被动 observer。
 - `apps/desktop/loopx-control-plane/src-tauri/src/services.rs`：已有服务进程管理不等于
   RFC 所要求的完整 managed Agent 生命周期。
+
+LoopX 自身的 dsh 固定版本跟随最新发布通道，而不是未发布的 tag：PyPI 上的
+`deepseek-harness-sdk==0.1.5rc1` / `deepseek-harness-runtime-bin==0.1.5rc1`，与 npm
+`@deepseek-ai/dsh` 的 `latest` 一致（2026-09-15 核对）。上游 `next` 与 `alpha` tag
+比该通道更新，这里不采纳。
 
 2026-09-06 独立检查的上游版本，不等同于 LoopX 已验证的安装版本：
 

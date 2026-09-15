@@ -60,7 +60,8 @@ Verified for this binding:
   credential selects `dsh`, an empty or whitespace-only value keeps `codex-cli`,
   and an explicit `--host` still wins (PR #4409);
 - both Turn host paths pass with the real SDK and runtime
-  (`deepseek-harness-sdk==0.1.2a3`): the in-process `--host dsh` path and the
+  (`deepseek-harness-sdk==0.1.5rc1`, the current released pin; the same pair
+  also passed at `0.1.2a3`): the in-process `--host dsh` path and the
   `generic-cli` subprocess path;
 - one live governed Turn reached `validated_progress`: the host executed the
   bounded action, an independent validator proved the postcondition, and only
@@ -70,12 +71,14 @@ Verified for this binding:
 
 Open gaps before this binding is a promoted production default:
 
-- the runtime snapshot bundled as `deepseek-harness-runtime-bin==0.1.2a3`
-  cannot boot the stock `headless` profile as shipped: a profile row imports
-  `@deepseek-ai/dsh-session-title-llm`, which the vendored package set omits,
-  and installing that package into a profile directory does not change
-  resolution inside the snapshot. The current local workaround is a binding
-  overlay that disables the affected row;
+- the runtime snapshot bundled as `deepseek-harness-runtime-bin==0.1.5rc1`
+  cannot boot the stock `headless` profile as shipped: a profile row pulls
+  `@deepseek-ai/dsh-session-title-first-prompt-llm`, which imports the omitted
+  `@deepseek-ai/dsh-session-title-llm`, and resolution runs inside the packaged
+  snapshot, so installing that package into a profile directory does not change
+  it. The current local workaround is a binding overlay that disables the
+  affected row. The managed host path is unaffected: it does not select
+  `headless`, and the default `sdk` profile boots and exits cleanly;
 - the LoopX DSH Turn composition must name the tool rows a managed action needs
   (`@deepseek-ai/dsh-tool-fs`, `@deepseek-ai/dsh-tool-bash`). Without them a live
   model can answer but cannot act, and the Turn ends in a validation failure
@@ -96,6 +99,12 @@ The implementation paths below are repository-relative:
   integration with bindings and continuation behavior; not a passive observer.
 - `apps/desktop/loopx-control-plane/src-tauri/src/services.rs`: service process
   management must not be mistaken for the complete managed Agent lifecycle.
+
+LoopX's own dsh pin tracks the newest released upstream channel rather than an
+unreleased tag: `deepseek-harness-sdk==0.1.5rc1` /
+`deepseek-harness-runtime-bin==0.1.5rc1` on PyPI, matching `latest` for
+`@deepseek-ai/dsh` on npm (checked 2026-09-15). Upstream `next` and `alpha` tags
+are newer than that channel and are not adopted here.
 
 Upstream references were inspected on 2026-09-06, pinned independently of the
 versions validated by LoopX:
