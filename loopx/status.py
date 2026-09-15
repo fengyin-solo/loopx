@@ -102,6 +102,7 @@ from .control_plane.runtime.status_classifications import (
     BLOCKING_CLASSIFICATIONS,
     CODEX_READY_CLASSIFICATIONS,
     DREAMING_ADVISORY_CLASSIFICATIONS,  # noqa: F401
+    DREAMING_DECISION_CLASSIFICATIONS,  # noqa: F401
     HANDOFF_READY_CLASSIFICATIONS,
     USER_OR_CONTROLLER_CLASSIFICATIONS,
 )
@@ -203,6 +204,7 @@ from .control_plane.todos.todo_semantics import (
 
 _PUBLIC_COMPAT_REEXPORTS = {
     "DREAMING_ADVISORY_CLASSIFICATIONS": "loopx.control_plane.runtime.status_classifications",
+    "DREAMING_DECISION_CLASSIFICATIONS": "loopx.control_plane.runtime.status_classifications",
     "TODO_PROJECTION_DETAIL_POINTER_SCHEMA_VERSION": "loopx.control_plane.work_items.project_asset",
     "TODO_PROJECTION_VIEW_SCHEMA_VERSION": "loopx.control_plane.work_items.project_asset",
     "project_asset_summary_is_public_safe": "loopx.control_plane.work_items.project_asset",

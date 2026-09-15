@@ -6,7 +6,10 @@ from pathlib import Path
 
 from ..dreaming import (
     DREAMING_PROPOSAL_DECISIONS,
+    LEDGER_PROPOSAL_STATUSES,
     build_dreaming_dry_run_proposal,
+    consolidate_dreaming_proposals,
+    list_dreaming_proposals,
     record_dreaming_proposal_decision,
     render_dreaming_markdown,
 )
@@ -44,6 +47,54 @@ def register_dreaming_commands(
         help="Recent compact non-neutral runs to inspect. Defaults to 20; capped at 50.",
     )
 
+    consolidate_parser = dreaming_sub.add_parser(
+        "consolidate",
+        help=(
+            "De-duplicate one batch of dreaming proposals into the persistent "
+            "ledger, merge equivalents, and annotate conflicting proposals."
+        ),
+    )
+    add_subcommand_format(consolidate_parser)
+    consolidate_parser.add_argument(
+        "--goal-id",
+        required=True,
+        help="Goal id whose recent compact history to consolidate.",
+    )
+    consolidate_parser.add_argument(
+        "--limit",
+        type=int,
+        default=20,
+        help="Recent compact non-neutral runs to inspect. Defaults to 20; capped at 50.",
+    )
+    consolidate_parser.add_argument(
+        "--policy-file",
+        help=(
+            "Dreaming policy JSON for conflict priority and defer TTL defaults. "
+            "Defaults to the .loopx/dreaming-policy.json sidecar when present."
+        ),
+    )
+    consolidate_parser.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="Preview de-duplication and conflicts without writing the proposal ledger.",
+    )
+
+    proposals_parser = dreaming_sub.add_parser(
+        "proposals",
+        help="List the read-only dreaming proposal adjudication queue.",
+    )
+    add_subcommand_format(proposals_parser)
+    proposals_parser.add_argument(
+        "--goal-id",
+        required=True,
+        help="Goal id whose dreaming proposal ledger to inspect.",
+    )
+    proposals_parser.add_argument(
+        "--status",
+        choices=sorted(LEDGER_PROPOSAL_STATUSES),
+        help="Only show proposals with this lifecycle status.",
+    )
+
     decide_parser = dreaming_sub.add_parser(
         "decide",
         help="Record an explicit operator/controller decision for a recorded dreaming proposal.",
@@ -73,6 +124,28 @@ def register_dreaming_commands(
     decide_parser.add_argument(
         "--claimed-by",
         help="Optional registered agent id to claim the approved follow-up todo.",
+    )
+    decide_parser.add_argument(
+        "--defer-until",
+        help=(
+            "ISO 8601 expiry timestamp when --decision defer; the proposal "
+            "re-enters adjudication after this time."
+        ),
+    )
+    decide_parser.add_argument(
+        "--defer-ttl-hours",
+        type=float,
+        help=(
+            "Positive defer duration in hours (mutually exclusive with "
+            "--defer-until); defaults to the policy default_defer_ttl_hours."
+        ),
+    )
+    decide_parser.add_argument(
+        "--policy-file",
+        help=(
+            "Dreaming policy JSON for the defer TTL default and conflict "
+            "priority. Defaults to the .loopx/dreaming-policy.json sidecar."
+        ),
     )
     decide_parser.add_argument(
         "--dry-run",
@@ -111,6 +184,22 @@ def handle_dreaming_command(
                 goal_id=args.goal_id,
                 limit=args.limit,
             )
+        elif args.dreaming_command == "consolidate":
+            payload = consolidate_dreaming_proposals(
+                registry_path=registry_path,
+                runtime_root_override=runtime_root_arg,
+                goal_id=args.goal_id,
+                limit=args.limit,
+                policy_file=args.policy_file,
+                dry_run=bool(args.dry_run),
+            )
+        elif args.dreaming_command == "proposals":
+            payload = list_dreaming_proposals(
+                registry_path=registry_path,
+                runtime_root_override=runtime_root_arg,
+                goal_id=args.goal_id,
+                status_filter=args.status,
+            )
         elif args.dreaming_command == "decide":
             payload = record_dreaming_proposal_decision(
                 registry_path=registry_path,
@@ -123,6 +212,9 @@ def handle_dreaming_command(
                 claimed_by=args.claimed_by,
                 dry_run=bool(args.dry_run),
                 sync_global=not bool(args.no_global_sync),
+                defer_until=args.defer_until,
+                defer_ttl_hours=args.defer_ttl_hours,
+                policy_file=args.policy_file,
             )
         else:
             raise ValueError(f"unsupported dreaming command: {args.dreaming_command}")
