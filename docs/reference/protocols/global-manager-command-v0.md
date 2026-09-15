@@ -362,6 +362,56 @@ timestamp predates the requested window. Missing or invalid timestamps produce
 a bounded warning and omit only that display field; they do not hide the active
 risk or cause an age guess.
 
+#### Optional persistent risk ledger
+
+The scan projection above is ephemeral. Operators can optionally establish a
+persistent ledger with the separate maintenance CLI
+`loopx risk-ledger init`, which creates `global-risk-ledger.json` beside the
+scanned registry (`.loopx/global-risk-ledger.json` for project registries,
+under the runtime root for the global registry). The slash command and
+`/loopx-global-risks` stay read-only; lifecycle mutations never enter this
+command. When no ledger file exists, the command output and side effects are
+identical to the ephemeral behavior and no file is created.
+
+The ledger identity `risk_id` is the first 16 lowercase hexadecimal characters
+of a SHA-256 digest over a canonical JSON object containing the public source
+surface, structured kind, scope, and exact goal id. It deliberately excludes
+the source-list index, so the same finding keeps one record when source order
+shifts between scans. The scan-scoped `occurrence_id` keeps its existing
+index-aware semantics; `risk_id` is exposed only inside the ledger annotation.
+
+When a ledger exists, each successful scan merges its observed findings into
+the ledger inside an exclusive file lock with atomic replacement; merging one
+scan batch is idempotent by unique scan id. Every retained row keeps its
+existing fields and gains a `ledger` object with `risk_id`, `status`,
+`first_seen_at`, `last_seen_at`, the cross-scan `occurrence_count` and
+`scan_count`, `assignee`, `suppress_until`, `reopen_count`, and
+`present_in_latest_scan`. The top-level flat `occurrence_count` remains
+scan-scoped. `summary.ledger` reports `enabled`, total `record_count`,
+`by_status`, `reopened_count`, and `suppressed_expired_count`.
+
+Lifecycle statuses are the explicit set `open`, `acknowledged`, `assigned`,
+`resolved`, and `suppressed`. `loopx risk-ledger ack|assign|resolve|suppress`
+append bounded history events; assignment accepts only agents registered in
+the scanned registry. Suppression takes an ISO8601 instant or positive
+`Nh`/`Nd` deadline; when the deadline passes, the record returns to `open` on
+the next scan or `risk-ledger show`. A `resolved` risk that appears again
+reopens with reason `reappeared`; a severity increase reopens with reason
+`severity_escalated` even while suppression is active, while same-severity
+recurrence during an active suppression stays suppressed. All reopenings keep
+the prior history, first-seen time, and accumulated counts.
+
+`loopx global-risks` accepts repeatable `--status`, `--severity`, and an
+`--assignee` filter (or `unassigned`); filters apply before grouping and the
+result limit, and active filters echo back in `request.ledger_filters`.
+Filters require an initialized ledger and otherwise fail with
+`risk_ledger_not_initialized`. An unreadable ledger never clears disposition
+state: an unfiltered scan still returns `ok=true` with a bounded
+`risk_ledger_unreadable` source warning and leaves the file untouched, while a
+filtered scan fails closed with the same error code. The ledger stores only
+redacted public-safe projection fields and disposition metadata, never local
+paths, raw diagnostics, or credentials.
+
 #### Exact agent scope and failure behavior
 
 Without `--agent-id`, the command does not inspect coordination. With a filter,
