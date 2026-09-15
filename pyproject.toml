@@ -22,7 +22,7 @@ Changelog = "https://github.com/huangruiteng/loopx/releases"
 
 [project.optional-dependencies]
 deepseek-harness = [
-  "deepseek-harness-sdk==0.1.2a3",
+  "deepseek-harness-sdk==0.1.5rc1",
 ]
 test = [
   "jsonschema>=4.23,<5",

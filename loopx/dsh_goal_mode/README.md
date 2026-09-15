@@ -86,7 +86,7 @@ contract failure instead of collapsing into `unknown`.
 ## Requirements
 
 - Optional dependency group `loopx[deepseek-harness]`, currently pinned to the
-  validated `deepseek-harness-sdk==0.1.2a3` API, or a compatible runner via
+  validated `deepseek-harness-sdk==0.1.5rc1` API, or a compatible runner via
   `--dsh-runner`.
 - A dsh `cordis.yml` plus any `DEEPSEEK_API_KEY` / `DEEPSEEK_BASE_URL`
   settings for the real runtime.

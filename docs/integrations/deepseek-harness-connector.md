@@ -29,7 +29,7 @@ LoopX quota should-run
 - A `deepseek-harness` agent type in LoopX onboarding so users can request the
   exact host instead of the generic `other-agent`.
 - Optional dependency `loopx[deepseek-harness]` for the validated
-  `deepseek-harness-sdk==0.1.2a3` Python client.
+  `deepseek-harness-sdk==0.1.5rc1` Python client.
 
 ## Install
 
@@ -38,6 +38,14 @@ Install LoopX's optional DeepSeek Harness extra:
 ```bash
 python -m pip install 'loopx[deepseek-harness]'
 ```
+
+The pin tracks the newest published dsh release channel rather than an
+unreleased tag: `0.1.5rc1` for the PyPI SDK/runtime wheels and `0.1.5-rc.1` for
+the npm `@deepseek-ai/dsh` `latest` tag. Upstream also publishes newer
+`next`/`alpha` tags that are not the released channel. This release keeps the
+Python client surface of the previously pinned `0.1.2a3` and moves the bundled
+dsh runtime; LoopX selects the SDK's default `sdk` profile unless the operator
+supplies an explicit cordis composition.
 
 The DeepSeek Harness SDK spawns the bundled `dsh-jsonrpc-agent` runtime. It
 uses the explicit adapter configuration plus normal provider environment
