@@ -89,6 +89,15 @@ Open gaps before this binding is a promoted production default:
   (`@deepseek-ai/dsh-tool-fs`, `@deepseek-ai/dsh-tool-bash`). Without them a live
   model can answer but cannot act, and the Turn ends in a validation failure
   rather than in work.
+- the host-mode plan still maps the unattended intent to the compatibility path:
+  `isolated_headless_turn` carries `turn_host: generic-cli`
+  (`loopx/host_mode_planner.py`), so the `loopx turn plan` command it prints
+  names `--host generic-cli` instead of the credential-resolved `dsh` default
+  recorded above. The plan's `--host-identity` list deliberately covers visible
+  hosts only, because a headless-only host such as `dsh` cannot own a visible
+  session; the unattended mapping itself still needs a decision between naming
+  the resolved default, offering a `dsh` variant, or labelling the emitted
+  command as the rollback path.
 
 ## Evidence Baseline
 

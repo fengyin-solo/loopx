@@ -75,6 +75,12 @@ LoopX 用该凭据解析托管有界 Turn 的默认宿主
 - LoopX 的 DSH Turn 组合必须显式列出托管动作所需的工具行
   （`@deepseek-ai/dsh-tool-fs`、`@deepseek-ai/dsh-tool-bash`）。缺少它们时，真实模型
   只能作答而无法动手，Turn 会以验证失败而不是产出工作结束。
+- 宿主模式计划仍把无人值守意图映射到兼容路径：`isolated_headless_turn` 的
+  `turn_host` 取 `generic-cli`（`loopx/host_mode_planner.py`），因此它打印的
+  `loopx turn plan` 命令写的是 `--host generic-cli`，而不是上文记录的、按凭据解析出
+  的 `dsh` 默认值。该计划的 `--host-identity` 列表只覆盖可见宿主是有意为之——像
+  `dsh` 这种仅 headless 的宿主无法拥有可见会话；但无人值守映射本身仍需在"写出解析
+  后的默认值 / 提供 `dsh` 变体 / 把该命令标注为回滚路径"之间做出决定。
 
 ## 证据基线
 
