@@ -112,6 +112,10 @@ FAMILY_CHECKS: dict[str, list[dict[str, str]]] = {
             "command": "python3 examples/dreaming-dry-run-proposal-smoke.py",
             "reason": "checks planning proposal preview remains dry-run and machine-visible",
         },
+        {
+            "command": "python3 examples/dreaming-proposal-ledger-smoke.py",
+            "reason": "checks proposal de-duplication, conflict priority, defer expiry, and decision persistence",
+        },
     ],
 }
 

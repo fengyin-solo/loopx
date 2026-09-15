@@ -34,6 +34,15 @@ DREAMING_ADVISORY_CLASSIFICATIONS = {
     "dreaming_archive_suggestion",
 }
 
+# Operator/controller decisions recorded for dreaming proposals. These are
+# adjudication records, not delivery signals: ingesting them back as proposal
+# evidence would make every decision spawn another proposal.
+DREAMING_DECISION_CLASSIFICATIONS = {
+    "dreaming_proposal_approved",
+    "dreaming_proposal_deferred",
+    "dreaming_proposal_rejected",
+}
+
 USER_OR_CONTROLLER_CLASSIFICATIONS = {
     "needs_human_reward",
     "needs_controller_opt_in",
